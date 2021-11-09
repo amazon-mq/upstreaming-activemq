@@ -1,3 +1,9 @@
+### Begin Active Team Ignores ###
+
+amq/my*
+
+############ End ################
+
 *~
 *.swp
 .idea
