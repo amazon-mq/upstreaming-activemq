@@ -21,4 +21,9 @@ public class ReplicaSourceBrokerTest {
         fail("Implement me");
     }
 
+    @Test
+    public void replicates_ADD_ONE_TEST_FOR_EACH_TYPE_OF_REPLICATED_EVENT() {
+        fail("Implement me");
+    }
+
 }
