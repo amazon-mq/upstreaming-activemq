@@ -16,9 +16,10 @@
  */
 package org.apache.activemq.web;
 
+import static java.util.stream.Collectors.toList;
+
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
@@ -42,6 +43,7 @@ import org.apache.activemq.broker.jmx.ProducerViewMBean;
 import org.apache.activemq.broker.jmx.QueueViewMBean;
 import org.apache.activemq.broker.jmx.SubscriptionViewMBean;
 import org.apache.activemq.broker.jmx.TopicViewMBean;
+import org.apache.activemq.replica.ReplicaSupport;
 import org.apache.activemq.web.util.ExceptionUtils;
 import org.springframework.util.StringUtils;
 
@@ -59,17 +61,20 @@ public abstract class BrokerFacadeSupport implements BrokerFacade {
     public Collection<QueueViewMBean> getQueues() throws Exception {
         BrokerViewMBean broker = getBrokerAdmin();
         if (broker == null) {
-            return Collections.EMPTY_LIST;
+            return List.of();
         }
         ObjectName[] queues = broker.getQueues();
-        return getManagedObjects(queues, QueueViewMBean.class);
+        return getManagedObjects(queues, QueueViewMBean.class)
+            .stream()
+            .filter(qView -> !qView.getName().startsWith(ReplicaSupport.REPLICATION_QUEUE_PREFIX))
+            .collect(toList());
     }
 
     @Override
     public Collection<TopicViewMBean> getTopics() throws Exception {
         BrokerViewMBean broker = getBrokerAdmin();
         if (broker == null) {
-            return Collections.EMPTY_LIST;
+            return List.of();
         }
         ObjectName[] topics = broker.getTopics();
         return getManagedObjects(topics, TopicViewMBean.class);
@@ -89,7 +94,7 @@ public abstract class BrokerFacadeSupport implements BrokerFacade {
     public Collection<SubscriptionViewMBean> getNonDurableTopicSubscribers() throws Exception {
         BrokerViewMBean broker = getBrokerAdmin();
         if (broker == null) {
-            return Collections.EMPTY_LIST;
+            return List.of();
         }
         ObjectName[] subscribers = broker.getTopicSubscribers();
         return getManagedObjects(subscribers, SubscriptionViewMBean.class);
@@ -99,7 +104,7 @@ public abstract class BrokerFacadeSupport implements BrokerFacade {
     public Collection<DurableSubscriptionViewMBean> getDurableTopicSubscribers() throws Exception {
         BrokerViewMBean broker = getBrokerAdmin();
         if (broker == null) {
-            return Collections.EMPTY_LIST;
+            return List.of();
         }
         ObjectName[] subscribers = broker.getDurableTopicSubscribers();
         return getManagedObjects(subscribers, DurableSubscriptionViewMBean.class);
@@ -109,7 +114,7 @@ public abstract class BrokerFacadeSupport implements BrokerFacade {
     public Collection<DurableSubscriptionViewMBean> getInactiveDurableTopicSubscribers() throws Exception {
         BrokerViewMBean broker = getBrokerAdmin();
         if (broker == null) {
-            return Collections.EMPTY_LIST;
+            return List.of();
         }
         ObjectName[] subscribers = broker.getInactiveDurableTopicSubscribers();
         return getManagedObjects(subscribers, DurableSubscriptionViewMBean.class);
