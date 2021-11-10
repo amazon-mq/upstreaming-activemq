@@ -2,6 +2,7 @@ package org.apache.activemq.replica;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
+import static org.junit.Assert.fail;
 import static org.mockito.Mockito.mock;
 
 import org.apache.activemq.ActiveMQConnectionFactory;
@@ -26,5 +27,10 @@ public class ReplicaBrokerTest {
         var connectionFactory = new ActiveMQConnectionFactory();
 
         new ReplicaBroker(broker, connectionFactory);
+    }
+
+    @Test
+    public void connectsToSourceBroker() {
+        fail("Needs writing");
     }
 }
