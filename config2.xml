@@ -40,7 +40,7 @@
         <destinationPolicy>
             <policyMap>
                 <policyEntries>
-                    <policyEntry topic=">" >
+                    <policyEntry topic=">" advisoryForConsumed="true">
                         <!-- The constantPendingMessageLimitStrategy is used to prevent
                              slow topic consumers to block producers and affect other consumers
                              by limiting the number of messages that are retained

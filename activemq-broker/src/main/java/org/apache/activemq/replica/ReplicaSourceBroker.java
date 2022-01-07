@@ -136,6 +136,10 @@ public class ReplicaSourceBroker extends BrokerFilter {
 
     private void replicateSend(final ProducerBrokerExchange context, final Message message,
                                final ActiveMQDestination destination) {
+        if (message.isAdvisory()) {  // TODO: only replicate what we care about
+            return;
+        }
+
         try {
             enqueueReplicaEvent(
                 context.getConnectionContext(),
@@ -356,7 +360,7 @@ public class ReplicaSourceBroker extends BrokerFilter {
     @Override
     public void send(final ProducerBrokerExchange producerExchange, final Message messageSend) throws Exception {
         super.send(producerExchange, messageSend);
-        replicateSend(producerExchange, messageSend, messageSend.getDestination()); // TODO: only replicate what we care about
+        replicateSend(producerExchange, messageSend, messageSend.getDestination());
     }
 
     @Override
