@@ -40,6 +40,7 @@ xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.sprin
     <destinationPolicy>
         <policyMap>
             <policyEntries>
+                <policyEntry queue=">" advisoryForConsumed="true"/>
                 <policyEntry topic=">" advisoryForConsumed="true">
                     <!-- The constantPendingMessageLimitStrategy is used to prevent
                          slow topic consumers to block producers and affect other consumers

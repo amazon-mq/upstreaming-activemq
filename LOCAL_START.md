@@ -1,7 +1,7 @@
 To test replication locally:
 --------------------------
 
-1) `mwn clean package -DskipTests`
+1) `mvn clean package -DskipTests`
 2) `./run-built-activemq.sh start`
 3) open [first broker console](http://127.0.0.1:8161) and [second broker console](http://127.0.0.1:8162)
 4) log in (`admin`/`admin`)

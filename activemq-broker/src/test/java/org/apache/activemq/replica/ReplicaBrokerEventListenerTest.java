@@ -1,22 +1,31 @@
 package org.apache.activemq.replica;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-
 import org.apache.activemq.broker.Broker;
 import org.apache.activemq.broker.ConnectionContext;
+import org.apache.activemq.broker.region.Destination;
+import org.apache.activemq.broker.region.Queue;
 import org.apache.activemq.command.ActiveMQMessage;
+import org.apache.activemq.command.ActiveMQQueue;
+import org.apache.activemq.command.MessageAck;
 import org.apache.activemq.command.MessageId;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 
+import java.util.Set;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 public class ReplicaBrokerEventListenerTest {
 
     private final Broker broker = mock(Broker.class);
+    private final ActiveMQQueue testQueue = new ActiveMQQueue("TEST.QUEUE");
+    private final Destination destinationQueue = mock(Queue.class);
     private final ConnectionContext connectionContext = mock(ConnectionContext.class);
     private final ReplicaBrokerSubscriptionHandler subscriptionHandler = mock(ReplicaBrokerSubscriptionHandler.class);
 
@@ -24,8 +33,9 @@ public class ReplicaBrokerEventListenerTest {
     private final ReplicaEventSerializer eventSerializer = new ReplicaEventSerializer();
 
     @Before
-    public void setUp() {
+    public void setUp() throws Exception {
         when(broker.getAdminConnectionContext()).thenReturn(connectionContext);
+        when(broker.getDestinations(any())).thenReturn(Set.of(destinationQueue));
         when(connectionContext.isProducerFlowControl()).thenReturn(true);
     }
 
@@ -85,13 +95,25 @@ public class ReplicaBrokerEventListenerTest {
 
         assertThat(Boolean.TRUE).withFailMessage("Needs implementation").isFalse();
     }
+
     @Test
-    public void canHandleEventOfType_MESSAGE_CONSUMED() {
-        var message = new ActiveMQMessage();
+    public void canHandleEventOfType_MESSAGE_CONSUMED() throws Exception {
+        MessageId messageId = new MessageId("1:1:1:1");
+        ActiveMQMessage message = new ActiveMQMessage();
+        message.setMessageId(messageId);
+        message.setDestination(testQueue);
+        final MessageAck ack = new MessageAck(message, MessageAck.INDIVIDUAL_ACK_TYPE, 1);
+        ReplicaEvent event = new ReplicaEvent()
+                .setEventType(ReplicaEventType.MESSAGE_CONSUMED)
+                .setEventData(eventSerializer.serializeReplicationData(ack));
+        ActiveMQMessage replicaEventMessage = new ActiveMQMessage();
+        replicaEventMessage.setType("ReplicaEvent");
+        replicaEventMessage.setStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY, event.getEventType().name());
+        replicaEventMessage.setContent(event.getEventData());
 
-        listener.onMessage(message);
+        listener.onMessage(replicaEventMessage);
 
-        assertThat(Boolean.TRUE).withFailMessage("Needs implementation").isFalse();
+        verify((Queue) destinationQueue, times(1)).removeMessage(messageId.toString());
     }
 
     @Test
@@ -174,5 +196,4 @@ public class ReplicaBrokerEventListenerTest {
 
         assertThat(Boolean.TRUE).withFailMessage("Needs implementation").isFalse();
     }
-
 }
