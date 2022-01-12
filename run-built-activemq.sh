@@ -33,6 +33,13 @@ copy_and_start() {
   sed -i.bak 's|ACTIVEMQ_SUNJMX_CONTROL=""|ACTIVEMQ_SUNJMX_CONTROL="--jmxurl service:jmx:rmi:///jndi/rmi://127.0.0.1:1099/jmxrmi"|g' ./broker1/bin/env
   sed -i.bak 's|ACTIVEMQ_SUNJMX_CONTROL=""|ACTIVEMQ_SUNJMX_CONTROL="--jmxurl service:jmx:rmi:///jndi/rmi://127.0.0.1:1089/jmxrmi"|g' ./broker2/bin/env
 
+  cd ../../
+  start
+}
+
+start() {
+  cd assembly/target/
+
   ./broker1/bin/activemq start
   ./broker2/bin/activemq start
 
@@ -58,6 +65,9 @@ case "$command" in
     ;;
   start)
     copy_and_start
+    ;;
+  soft_start)
+    start
     ;;
   stop)
     stop

@@ -66,6 +66,7 @@ public class ReplicaBrokerEventListener implements MessageListener {
                     case MESSAGE_CONSUMED: // TODO: make sure advisory correctly fired
                     case MESSAGE_EXPIRED:
                     case MESSAGE_DISCARDED:
+                    case MESSAGE_DROPPED:
                         logger.trace("Processing replicated message removal due to {}", eventType);
                         removeMessage((MessageAck) deserializedData);
                         return;
@@ -81,9 +82,12 @@ public class ReplicaBrokerEventListener implements MessageListener {
                         logger.warn("Unhandled event type \"{}\" for replication message id: {}", eventType, message.getJMSMessageID());
                 }
             });
+            message.acknowledge();
         } catch (IOException | ClassCastException e) {
             logger.error("Failed to deserialize replication message (id={}), {}", message.getMessageId(), new String(messageContent.data));
             logger.debug("Deserialization error for replication message (id={})", message.getMessageId(), e);
+        } catch (JMSException e) {
+            logger.error("Failed to acknowledge replication message (id={})", message.getMessageId());
         }
     }
 

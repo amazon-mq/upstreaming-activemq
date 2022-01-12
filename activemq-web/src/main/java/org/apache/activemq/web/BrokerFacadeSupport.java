@@ -64,10 +64,12 @@ public abstract class BrokerFacadeSupport implements BrokerFacade {
             return List.of();
         }
         ObjectName[] queues = broker.getQueues();
-        return getManagedObjects(queues, QueueViewMBean.class)
-            .stream()
-            .filter(qView -> !qView.getName().startsWith(ReplicaSupport.REPLICATION_QUEUE_PREFIX))
-            .collect(toList());
+        // FIXME hide it back when we are ready
+//        return getManagedObjects(queues, QueueViewMBean.class)
+//            .stream()
+//            .filter(qView -> !qView.getName().startsWith(ReplicaSupport.REPLICATION_QUEUE_PREFIX))
+//            .collect(toList());
+        return getManagedObjects(queues, QueueViewMBean.class);
     }
 
     @Override

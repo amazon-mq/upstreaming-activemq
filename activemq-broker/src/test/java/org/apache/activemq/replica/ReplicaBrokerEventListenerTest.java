@@ -17,6 +17,7 @@ import java.util.Set;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -64,15 +65,15 @@ public class ReplicaBrokerEventListenerTest {
         ActiveMQMessage message = new ActiveMQMessage();
         message.setMessageId(messageId);
 
-        ActiveMQMessage replicaMessage = new ActiveMQMessage();
+        ActiveMQMessage replicaEventMessage = spy(new ActiveMQMessage());
 
         ReplicaEvent event = new ReplicaEvent()
                 .setEventType(ReplicaEventType.MESSAGE_SEND)
                 .setEventData(eventSerializer.serializeMessageData(message));
-        replicaMessage.setContent(event.getEventData());
-        replicaMessage.setStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY, event.getEventType().name());
+        replicaEventMessage.setContent(event.getEventData());
+        replicaEventMessage.setStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY, event.getEventType().name());
 
-        listener.onMessage(replicaMessage);
+        listener.onMessage(replicaEventMessage);
 
         verify(broker).getAdminConnectionContext();
         ArgumentCaptor<ActiveMQMessage> messageArgumentCaptor = ArgumentCaptor.forClass(ActiveMQMessage.class);
@@ -85,6 +86,7 @@ public class ReplicaBrokerEventListenerTest {
         verify(connectionContext).setProducerFlowControl(false);
         verify(connectionContext).setProducerFlowControl(true);
 
+        verify(replicaEventMessage).acknowledge();
     }
 
     @Test
@@ -106,7 +108,7 @@ public class ReplicaBrokerEventListenerTest {
         ReplicaEvent event = new ReplicaEvent()
                 .setEventType(ReplicaEventType.MESSAGE_CONSUMED)
                 .setEventData(eventSerializer.serializeReplicationData(ack));
-        ActiveMQMessage replicaEventMessage = new ActiveMQMessage();
+        ActiveMQMessage replicaEventMessage = spy(new ActiveMQMessage());
         replicaEventMessage.setType("ReplicaEvent");
         replicaEventMessage.setStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY, event.getEventType().name());
         replicaEventMessage.setContent(event.getEventData());
@@ -114,6 +116,8 @@ public class ReplicaBrokerEventListenerTest {
         listener.onMessage(replicaEventMessage);
 
         verify((Queue) destinationQueue, times(1)).removeMessage(messageId.toString());
+
+        verify(replicaEventMessage).acknowledge();
     }
 
     @Test
@@ -123,6 +127,28 @@ public class ReplicaBrokerEventListenerTest {
         listener.onMessage(message);
 
         assertThat(Boolean.TRUE).withFailMessage("Needs implementation").isFalse();
+    }
+
+    @Test
+    public void canHandleEventOfType_MESSAGE_DROPPED() throws Exception {
+        MessageId messageId = new MessageId("1:1:1:1");
+        ActiveMQMessage message = new ActiveMQMessage();
+        message.setMessageId(messageId);
+        message.setDestination(testQueue);
+        final MessageAck ack = new MessageAck(message, MessageAck.INDIVIDUAL_ACK_TYPE, 1);
+        ReplicaEvent event = new ReplicaEvent()
+                .setEventType(ReplicaEventType.MESSAGE_DROPPED)
+                .setEventData(eventSerializer.serializeReplicationData(ack));
+        ActiveMQMessage replicaEventMessage = spy(new ActiveMQMessage());
+        replicaEventMessage.setType("ReplicaEvent");
+        replicaEventMessage.setStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY, event.getEventType().name());
+        replicaEventMessage.setContent(event.getEventData());
+
+        listener.onMessage(replicaEventMessage);
+
+        verify((Queue) destinationQueue, times(1)).removeMessage(messageId.toString());
+
+        verify(replicaEventMessage).acknowledge();
     }
 
     @Test

@@ -12,6 +12,9 @@ import org.apache.activemq.broker.region.Destination;
 import org.apache.activemq.broker.region.DestinationFilter;
 import org.apache.activemq.broker.region.DestinationInterceptor;
 import org.apache.activemq.broker.region.MessageReference;
+import org.apache.activemq.broker.region.Queue;
+import org.apache.activemq.broker.region.QueueListener;
+import org.apache.activemq.broker.region.QueueMessageReference;
 import org.apache.activemq.broker.region.Subscription;
 import org.apache.activemq.broker.region.virtual.VirtualDestination;
 import org.apache.activemq.command.ActiveMQDestination;
@@ -42,7 +45,7 @@ import java.util.Arrays;
 import java.util.Set;
 import java.util.stream.Stream;
 
-public class ReplicaSourceBroker extends BrokerFilter {
+public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
 
     private static final DestinationMapEntry<Boolean> IS_REPLICATED = new DestinationMapEntry<Boolean>() {}; // used in destination map to indicate mirrored status
 
@@ -63,9 +66,11 @@ public class ReplicaSourceBroker extends BrokerFilter {
 
     @Override
     public void start() throws Exception {
-        super.start();
         queueProvider.initialize();
         logger.info("Replica plugin initialized with queue {}", queueProvider.get());
+
+        super.start();
+
         ensureDestinationsAreReplicated();
         addReplicationInterceptor();
     }
@@ -384,6 +389,10 @@ public class ReplicaSourceBroker extends BrokerFilter {
         Destination newDestination = super.addDestination(context, destination, createIfTemporary);
         if (shouldReplicateDestination(destination)) {
             replicateDestinationCreation(context, destination);
+
+            if (destination.isQueue() && !((Queue) newDestination).getListeners().contains(this)) {
+                ((Queue) newDestination).addListener(this);
+            }
         }
         return newDestination;
     }
@@ -506,6 +515,25 @@ public class ReplicaSourceBroker extends BrokerFilter {
     @Override
     public void virtualDestinationRemoved(final ConnectionContext context, final VirtualDestination virtualDestination) {
         super.virtualDestinationRemoved(context, virtualDestination);
+    }
+
+    @Override
+    public void onDropMessage(QueueMessageReference reference) {
+        final Message message = reference.getMessage();
+        if (!isReplicatedDestination(message.getDestination())) {
+            return;
+        }
+        try {
+            final MessageAck ackToReplicate = createAckFromReference(reference, null);
+            enqueueReplicaEvent(
+                    getAdminConnectionContext(),
+                    new ReplicaEvent()
+                            .setEventType(ReplicaEventType.MESSAGE_DROPPED)
+                            .setEventData(eventSerializer.serializeReplicationData(ackToReplicate))
+            );
+        } catch (Exception e) {
+            logger.error("Failed to replicate drop message {}", reference.getMessageId(), e);
+        }
     }
 
     static class ReplicationDestinationInterceptor implements DestinationInterceptor {
