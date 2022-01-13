@@ -7,8 +7,12 @@ import java.io.IOException;
 
 import org.apache.activemq.command.ActiveMQDestination;
 import org.apache.activemq.command.ActiveMQMessage;
+import org.apache.activemq.command.DataStructure;
 import org.apache.activemq.util.ByteSequence;
 import org.junit.Test;
+import org.mockito.Mockito;
+
+import javax.xml.crypto.Data;
 
 public class ReplicaEventSerializerTest {
 
@@ -16,7 +20,7 @@ public class ReplicaEventSerializerTest {
 
     @Test
     public void canDoRoundTripSerializedForDataOf_DESTINATION_UPSERT() throws IOException {
-        var object = new Object();
+        var object = Mockito.mock(DataStructure.class);
         var expectedClass = ActiveMQDestination.class;
         fail("Need correct object for test");
 
@@ -30,7 +34,7 @@ public class ReplicaEventSerializerTest {
 
     @Test
     public void canDoRoundTripSerializedForDataOf_DESTINATION_DELETE() throws IOException {
-        var object = new Object();
+        var object = Mockito.mock(DataStructure.class);
         var expectedClass = ActiveMQDestination.class;
         fail("Need correct object for test");
 
@@ -57,7 +61,7 @@ public class ReplicaEventSerializerTest {
 
     @Test
     public void canDoRoundTripSerializedForDataOf_MESSAGE_ACK() throws IOException {
-        var object = new Object();
+        var object = Mockito.mock(DataStructure.class);
         var expectedClass = ActiveMQDestination.class;
         fail("Need correct object for test");
 
@@ -71,7 +75,7 @@ public class ReplicaEventSerializerTest {
 
     @Test
     public void canDoRoundTripSerializedForDataOf_MESSAGE_CONSUMED() throws IOException {
-        var object = new Object();
+        var object = Mockito.mock(DataStructure.class);
         var expectedClass = ActiveMQDestination.class;
         fail("Need correct object for test");
 
@@ -85,7 +89,7 @@ public class ReplicaEventSerializerTest {
 
     @Test
     public void canDoRoundTripSerializedForDataOf_MESSAGE_DISCARDED() throws IOException {
-        var object = new Object();
+        var object = Mockito.mock(DataStructure.class);
         var expectedClass = ActiveMQDestination.class;
         fail("Need correct object for test");
 
@@ -99,7 +103,7 @@ public class ReplicaEventSerializerTest {
 
     @Test
     public void canDoRoundTripSerializedForDataOf_TRANSACTION_BEGIN() throws IOException {
-        var object = new Object();
+        var object = Mockito.mock(DataStructure.class);
         var expectedClass = ActiveMQDestination.class;
         fail("Need correct object for test");
 
@@ -113,7 +117,7 @@ public class ReplicaEventSerializerTest {
 
     @Test
     public void canDoRoundTripSerializedForDataOf_TRANSACTION_PREPARE() throws IOException {
-        var object = new Object();
+        var object = Mockito.mock(DataStructure.class);
         var expectedClass = ActiveMQDestination.class;
         fail("Need correct object for test");
 
@@ -127,7 +131,7 @@ public class ReplicaEventSerializerTest {
 
     @Test
     public void canDoRoundTripSerializedForDataOf_TRANSACTION_ROLLBACK() throws IOException {
-        var object = new Object();
+        var object = Mockito.mock(DataStructure.class);
         var expectedClass = ActiveMQDestination.class;
         fail("Need correct object for test");
 
@@ -141,7 +145,7 @@ public class ReplicaEventSerializerTest {
 
     @Test
     public void canDoRoundTripSerializedForDataOf_TRANSACTION_COMMIT() throws IOException {
-        var object = new Object();
+        var object = Mockito.mock(DataStructure.class);
         var expectedClass = ActiveMQDestination.class;
         fail("Need correct object for test");
 
@@ -155,7 +159,7 @@ public class ReplicaEventSerializerTest {
 
     @Test
     public void canDoRoundTripSerializedForDataOf_TRANSACTION_FORGET() throws IOException {
-        var object = new Object();
+        var object = Mockito.mock(DataStructure.class);
         var expectedClass = ActiveMQDestination.class;
         fail("Need correct object for test");
 
@@ -169,7 +173,7 @@ public class ReplicaEventSerializerTest {
 
     @Test
     public void canDoRoundTripSerializedForDataOf_MESSAGE_EXPIRED() throws IOException {
-        var object = new Object();
+        var object = Mockito.mock(DataStructure.class);
         var expectedClass = ActiveMQDestination.class;
         fail("Need correct object for test");
 
@@ -183,7 +187,7 @@ public class ReplicaEventSerializerTest {
 
     @Test
     public void canDoRoundTripSerializedForDataOf_SUBSCRIBER_REMOVED() throws IOException {
-        var object = new Object();
+        var object = Mockito.mock(DataStructure.class);
         var expectedClass = ActiveMQDestination.class;
         fail("Need correct object for test");
 
@@ -197,7 +201,7 @@ public class ReplicaEventSerializerTest {
 
     @Test
     public void canDoRoundTripSerializedForDataOf_SUBSCRIBER_ADDED() throws IOException {
-        var object = new Object();
+        var object = Mockito.mock(DataStructure.class);
         var expectedClass = ActiveMQDestination.class;
         fail("Need correct object for test");
 

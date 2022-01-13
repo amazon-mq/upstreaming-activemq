@@ -6,7 +6,6 @@ import org.apache.activemq.broker.region.AbstractRegion;
 import org.apache.activemq.broker.region.Destination;
 import org.apache.activemq.broker.region.DurableTopicSubscription;
 import org.apache.activemq.broker.region.IndirectMessageReference;
-import org.apache.activemq.broker.region.MessageReference;
 import org.apache.activemq.broker.region.Queue;
 import org.apache.activemq.broker.region.Region;
 import org.apache.activemq.broker.region.RegionBroker;
@@ -16,15 +15,18 @@ import org.apache.activemq.command.ActiveMQDestination;
 import org.apache.activemq.command.ActiveMQMessage;
 import org.apache.activemq.command.ConsumerId;
 import org.apache.activemq.command.MessageAck;
+import org.apache.activemq.command.TransactionId;
 import org.apache.activemq.util.ByteSequence;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import javax.jms.JMSException;
 import javax.jms.Message;
 import javax.jms.MessageListener;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static java.util.Objects.requireNonNull;
 
@@ -52,7 +54,6 @@ public class ReplicaBrokerEventListener implements MessageListener {
 
         try {
             Object deserializedData = eventSerializer.deserializeMessageData(messageContent);
-            logger.trace(deserializedData.toString());
             getEventType(message).ifPresent(eventType -> {
                 switch (eventType) {
                     case MESSAGE_SEND:
@@ -78,6 +79,32 @@ public class ReplicaBrokerEventListener implements MessageListener {
                         logger.trace("Processing replicated destination deletion");
                         deleteDestination((ActiveMQDestination) deserializedData);
                         return;
+                    case TRANSACTION_BEGIN:
+                        logger.trace("Processing replicated transaction begin");
+                        beginTransaction((TransactionId) deserializedData);
+                        return;
+                    case TRANSACTION_PREPARE:
+                        logger.trace("Processing replicated transaction prepare");
+                        prepareTransaction((TransactionId) deserializedData);
+                        return;
+                    case TRANSACTION_FORGET:
+                        logger.trace("Processing replicated transaction forget");
+                        forgetTransaction((TransactionId) deserializedData);
+                        return;
+                    case TRANSACTION_ROLLBACK:
+                        logger.trace("Processing replicated transaction rollback");
+                        rollbackTransaction((TransactionId) deserializedData);
+                        return;
+                    case TRANSACTION_COMMIT:
+                        logger.trace("Processing replicated transaction commit");
+                        try {
+                            commitTransaction(
+                                    (TransactionId) deserializedData,
+                                    message.getBooleanProperty(ReplicaSupport.TRANSACTION_ONE_PHASE_PROPERTY));
+                        } catch (JMSException e) {
+                            logger.error("Failed to extract property to replicate transaction commit with id [{}]", deserializedData, e);
+                        }
+                        return;
                     default:
                         logger.warn("Unhandled event type \"{}\" for replication message id: {}", eventType, message.getJMSMessageID());
                 }
@@ -95,10 +122,9 @@ public class ReplicaBrokerEventListener implements MessageListener {
         try {
             String eventTypeProperty = message.getStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY);
             return Arrays.stream(ReplicaEventType.values())
-                .filter(t -> t.name().equals(eventTypeProperty))
-                .findFirst();
-        }
-        catch (JMSException e) {
+                    .filter(t -> t.name().equals(eventTypeProperty))
+                    .findFirst();
+        } catch (JMSException e) {
             logger.error("Failed to get {} property {}", ReplicaEventType.class.getSimpleName(), ReplicaEventType.EVENT_TYPE_PROPERTY, e);
             return Optional.empty();
         }
@@ -116,14 +142,14 @@ public class ReplicaBrokerEventListener implements MessageListener {
         try {
             ConsumerBrokerExchange consumerBrokerExchange = new ConsumerBrokerExchange();
             Destination destination = broker.getDestinations(ack.getDestination()).stream()
-                .findFirst()
-                .orElseThrow(() -> new IllegalStateException("Destination not found that matches: " + ack.getDestination().getQualifiedName()));
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalStateException("Destination not found that matches: " + ack.getDestination().getQualifiedName()));
             consumerBrokerExchange.setRegion(broker);
             consumerBrokerExchange.setRegionDestination(destination);
             consumerBrokerExchange.setConnectionContext(broker.getAdminConnectionContext());
             final ConsumerId newOrExistingConsumerId = subscriptionHandler.createSubscriptionIfAbsent(
-                ack.getConsumerId(),
-                ack.getDestination()
+                    ack.getConsumerId(),
+                    ack.getDestination()
             );
             ack.setConsumerId(newOrExistingConsumerId);
             RegionBroker regionBroker = (RegionBroker) broker.getAdaptor(RegionBroker.class);
@@ -152,30 +178,26 @@ public class ReplicaBrokerEventListener implements MessageListener {
 
     private void handleRemoveForTopic(final Topic topic, final MessageAck messageAck) throws IOException {
         Optional<Subscription> subscriptionForWhichThisAckIsReplicated = Optional.ofNullable(broker.getAdaptor(AbstractRegion.class))
-            .map(AbstractRegion.class::cast)
-            .map(AbstractRegion::getSubscriptions)
-            .map(subscriptions -> subscriptions.get(messageAck.getConsumerId()))
-            .filter(DurableTopicSubscription.class::isInstance);
+                .map(AbstractRegion.class::cast)
+                .map(AbstractRegion::getSubscriptions)
+                .map(subscriptions -> subscriptions.get(messageAck.getConsumerId()))
+                .filter(DurableTopicSubscription.class::isInstance);
 
         if (subscriptionForWhichThisAckIsReplicated.isPresent()) {
             org.apache.activemq.command.Message message = topic.loadMessage(messageAck.getFirstMessageId()); // TODO: think about efficiency of this and if we can just ack without a full message retrieval
             topic.acknowledge(
-                broker.getAdminConnectionContext(),
-                subscriptionForWhichThisAckIsReplicated.get(),
-                messageAck,
-                new IndirectMessageReference(message)
+                    broker.getAdminConnectionContext(),
+                    subscriptionForWhichThisAckIsReplicated.get(),
+                    messageAck,
+                    new IndirectMessageReference(message)
             );
         }
-    }
-
-    private void consumeMessage(final MessageReference messageReference) {
-        broker.getRoot().messageConsumed(broker.getAdminConnectionContext(), messageReference);
     }
 
     private void upsertDestination(final ActiveMQDestination destination) {
         try {
             boolean isExistingDestination = Arrays.stream(broker.getDestinations())
-                .anyMatch(d -> d.getQualifiedName().equals(destination.getQualifiedName()));
+                    .anyMatch(d -> d.getQualifiedName().equals(destination.getQualifiedName()));
             if (isExistingDestination) {
                 logger.debug("Destination [{}] already exists, no action to take", destination);
                 return;
@@ -193,7 +215,7 @@ public class ReplicaBrokerEventListener implements MessageListener {
     private void deleteDestination(final ActiveMQDestination destination) {
         try {
             boolean isNonExtantDestination = Arrays.stream(broker.getDestinations())
-                .noneMatch(d -> d.getQualifiedName().equals(destination.getQualifiedName()));
+                    .noneMatch(d -> d.getQualifiedName().equals(destination.getQualifiedName()));
             if (isNonExtantDestination) {
                 logger.debug("Destination [{}] does not exist, no action to take", destination);
                 return;
@@ -205,6 +227,56 @@ public class ReplicaBrokerEventListener implements MessageListener {
             broker.removeDestination(broker.getAdminConnectionContext(), destination, 1000);
         } catch (Exception e) {
             logger.error("Unable to remove destination [{}]", destination, e);
+        }
+    }
+
+    private void beginTransaction(TransactionId xid) {
+        try {
+            createTransactionMapIfNotExist();
+            broker.beginTransaction(broker.getAdminConnectionContext(), xid);
+        } catch (Exception e) {
+            logger.error("Unable to replicate begin transaction [{}]", xid, e);
+        }
+    }
+
+    private void prepareTransaction(TransactionId xid) {
+        try {
+            createTransactionMapIfNotExist();
+            broker.prepareTransaction(broker.getAdminConnectionContext(), xid);
+        } catch (Exception e) {
+            logger.error("Unable to replicate prepare transaction [{}]", xid, e);
+        }
+    }
+
+    private void forgetTransaction(TransactionId xid) {
+        try {
+            createTransactionMapIfNotExist();
+            broker.forgetTransaction(broker.getAdminConnectionContext(), xid);
+        } catch (Exception e) {
+            logger.error("Unable to replicate forget transaction [{}]", xid, e);
+        }
+    }
+
+    private void rollbackTransaction(TransactionId xid) {
+        try {
+            createTransactionMapIfNotExist();
+            broker.rollbackTransaction(broker.getAdminConnectionContext(), xid);
+        } catch (Exception e) {
+            logger.error("Unable to replicate rollback transaction [{}]", xid, e);
+        }
+    }
+
+    private void commitTransaction(TransactionId xid, boolean onePhase) {
+        try {
+            broker.commitTransaction(broker.getAdminConnectionContext(), xid, onePhase);
+        } catch (Exception e) {
+            logger.error("Unable to replicate commit transaction [{}]", xid, e);
+        }
+    }
+
+    private void createTransactionMapIfNotExist() {
+        if (broker.getAdminConnectionContext().getTransactions() == null) {
+            broker.getAdminConnectionContext().setTransactions(new ConcurrentHashMap<>());
         }
     }
 

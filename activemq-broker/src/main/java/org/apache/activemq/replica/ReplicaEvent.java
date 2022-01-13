@@ -40,4 +40,8 @@ public class ReplicaEvent {
     ReplicaEventType getEventType() {
         return eventType;
     }
+
+    public Map<String, Object> getReplicationProperties() {
+        return replicationProperties;
+    }
 }

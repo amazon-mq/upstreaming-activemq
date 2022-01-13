@@ -17,5 +17,5 @@ public enum ReplicaEventType {
     SUBSCRIBER_REMOVED,
     SUBSCRIBER_ADDED;
 
-    static String EVENT_TYPE_PROPERTY = "ActiveMQ.Replication.EventType";
+    static final String EVENT_TYPE_PROPERTY = "ActiveMQ.Replication.EventType";
 }
