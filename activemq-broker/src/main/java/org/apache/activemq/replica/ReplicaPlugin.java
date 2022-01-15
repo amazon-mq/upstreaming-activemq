@@ -21,6 +21,7 @@ public class ReplicaPlugin extends BrokerPluginSupport {
 
     protected ReplicaRole role = ReplicaRole.source;
     protected ActiveMQConnectionFactory otherBrokerConnectionFactory = null;
+    protected URI transportConnectorUri = null;
 
     public ReplicaPlugin() {
         super();
@@ -31,7 +32,7 @@ public class ReplicaPlugin extends BrokerPluginSupport {
         logger.info("{} installed, running as {}", ReplicaPlugin.class.getName(), role);
         return role == ReplicaRole.replica
             ? new ReplicaBroker(broker, otherBrokerConnectionFactory)
-            : new ReplicaSourceBroker(broker);
+            : new ReplicaSourceBroker(broker, transportConnectorUri);
     }
 
     public ReplicaPlugin setRole(ReplicaRole role) {
@@ -66,6 +67,13 @@ public class ReplicaPlugin extends BrokerPluginSupport {
                 : "failover:("+uri+")"
         );
         this.otherBrokerConnectionFactory = connectionFactory;
+    }
+
+    /**
+     * @org.apache.xbean.Property propertyEditor="com.sun.beans.editors.StringEditor"
+     */
+    public void setTransportConnectorUri(String uri) {
+        transportConnectorUri = URI.create(uri);
     }
 
     public ReplicaRole getRole() {

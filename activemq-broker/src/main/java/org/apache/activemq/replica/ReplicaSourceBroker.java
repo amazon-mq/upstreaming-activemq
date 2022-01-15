@@ -6,8 +6,10 @@ import org.apache.activemq.broker.BrokerFilter;
 import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.broker.Connection;
 import org.apache.activemq.broker.ConnectionContext;
+import org.apache.activemq.broker.Connector;
 import org.apache.activemq.broker.ConsumerBrokerExchange;
 import org.apache.activemq.broker.ProducerBrokerExchange;
+import org.apache.activemq.broker.TransportConnector;
 import org.apache.activemq.broker.region.Destination;
 import org.apache.activemq.broker.region.DestinationFilter;
 import org.apache.activemq.broker.region.DestinationInterceptor;
@@ -30,43 +32,53 @@ import org.apache.activemq.command.MessageDispatchNotification;
 import org.apache.activemq.command.MessageId;
 import org.apache.activemq.command.MessagePull;
 import org.apache.activemq.command.ProducerId;
+import org.apache.activemq.command.ProducerInfo;
 import org.apache.activemq.command.RemoveSubscriptionInfo;
 import org.apache.activemq.command.Response;
 import org.apache.activemq.command.SubscriptionInfo;
 import org.apache.activemq.command.TransactionId;
 import org.apache.activemq.filter.DestinationMap;
 import org.apache.activemq.filter.DestinationMapEntry;
+import org.apache.activemq.security.SecurityContext;
 import org.apache.activemq.util.IdGenerator;
 import org.apache.activemq.util.LongSequenceGenerator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.net.URI;
 import java.util.Arrays;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Stream;
 
 public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
 
+    private static final Logger logger = LoggerFactory.getLogger(ReplicaSourceBroker.class);
     private static final DestinationMapEntry<Boolean> IS_REPLICATED = new DestinationMapEntry<>() {}; // used in destination map to indicate mirrored status
+    static final String REPLICATION_CONNECTOR_NAME_SUFFIX = "_replication";
 
     final DestinationMap destinationsToReplicate = new DestinationMap();
 
-    private final Logger logger = LoggerFactory.getLogger(ReplicaSourceBroker.class);
     private final IdGenerator idGenerator = new IdGenerator();
     private final ProducerId replicationProducerId = new ProducerId();
     private final LongSequenceGenerator eventMessageIdGenerator = new LongSequenceGenerator();
     private final ReplicaEventSerializer eventSerializer = new ReplicaEventSerializer();
-    private final ReplicaReplicationQueueSupplier queueProvider;
+    final ReplicaReplicationQueueSupplier queueProvider;
+    private final URI transportConnectorUri;
 
-    public ReplicaSourceBroker(final Broker next) {
+    public ReplicaSourceBroker(Broker next, URI transportConnectorUri) {
         super(next);
+        this.transportConnectorUri = Objects.requireNonNull(transportConnectorUri, "Need replication transport connection URI for this broker");
         replicationProducerId.setConnectionId(idGenerator.generateId());
         queueProvider = new ReplicaReplicationQueueSupplier(next);
     }
 
     @Override
     public void start() throws Exception {
+        TransportConnector transportConnector = next.getBrokerService().addConnector(transportConnectorUri);
+        transportConnector.setName(transportConnector.getName() + REPLICATION_CONNECTOR_NAME_SUFFIX);
+
         queueProvider.initialize();
         logger.info("Replica plugin initialized with queue {}", queueProvider.get());
 
@@ -85,9 +97,9 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
         }
     }
 
-    private boolean shouldReplicateDestination(final ActiveMQDestination destination) {
-        boolean isReplicationQueue = destination.getPhysicalName().startsWith(ReplicaSupport.REPLICATION_QUEUE_PREFIX);
-        boolean isAdvisoryDestination = destination.getPhysicalName().startsWith(AdvisorySupport.ADVISORY_TOPIC_PREFIX);
+    private boolean shouldReplicateDestination(ActiveMQDestination destination) {
+        boolean isReplicationQueue = isReplicationQueue(destination);
+        boolean isAdvisoryDestination = isAdvisoryDestination(destination);
         boolean shouldReplicate = !isReplicationQueue && !isAdvisoryDestination;
         String reason = shouldReplicate ? "" : " because ";
         if (isReplicationQueue) reason += "it is a replication queue";
@@ -96,7 +108,15 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
         return shouldReplicate;
     }
 
-    public boolean isReplicatedDestination(final ActiveMQDestination destination) {
+    private boolean isAdvisoryDestination(ActiveMQDestination destination) {
+        return destination.getPhysicalName().startsWith(AdvisorySupport.ADVISORY_TOPIC_PREFIX);
+    }
+
+    private boolean isReplicationQueue(ActiveMQDestination destination) {
+        return destination.getPhysicalName().startsWith(ReplicaSupport.REPLICATION_QUEUE_PREFIX);
+    }
+
+    public boolean isReplicatedDestination(ActiveMQDestination destination) {
         if (destinationsToReplicate.chooseValue(destination) == null) {
             logger.debug("{} is not a replicated destination", destination.getPhysicalName());
             return false;
@@ -141,8 +161,7 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
         );
     }
 
-    private void replicateSend(final ProducerBrokerExchange context, final Message message,
-                               final ActiveMQDestination destination) {
+    private void replicateSend(ProducerBrokerExchange context, Message message, ActiveMQDestination destination) {
         if (message.isAdvisory()) {  // TODO: only replicate what we care about
             return;
         }
@@ -222,7 +241,7 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
         }
     }
 
-    private void replicateDestinationCreation(final ConnectionContext context, final ActiveMQDestination destination) throws Exception {
+    private void replicateDestinationCreation(ConnectionContext context, ActiveMQDestination destination) throws Exception {
         enqueueReplicaEvent(
             context,
             new ReplicaEvent()
@@ -234,7 +253,7 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
         }
     }
 
-    private void replicateDestinationRemoval(final ActiveMQDestination destination) {
+    private void replicateDestinationRemoval(ActiveMQDestination destination) {
         if (!isReplicatedDestination(destination)) {
             return;
         }
@@ -251,12 +270,12 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
     }
 
     private void replicateMessageConsumed(ConnectionContext context, MessageReference reference) {
-        final Message message = reference.getMessage();
+        Message message = reference.getMessage();
         if (!isReplicatedDestination(message.getDestination())) {
             return;
         }
         try {
-            final MessageAck ackToReplicate = createAckFromReference(reference, null);
+            MessageAck ackToReplicate = createAckFromReference(reference, null);
             enqueueReplicaEvent(
                 context,
                 new ReplicaEvent()
@@ -269,12 +288,12 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
     }
 
     private void replicateMessageDiscarded(ConnectionContext context, MessageReference reference) {
-        final Message message = reference.getMessage();
+        Message message = reference.getMessage();
         if (!isReplicatedDestination(message.getDestination())) {
             return;
         }
         try {
-            final MessageAck ackToReplicate = createAckFromReference(reference, null);
+            MessageAck ackToReplicate = createAckFromReference(reference, null);
             enqueueReplicaEvent(
                 context,
                 new ReplicaEvent()
@@ -287,12 +306,12 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
     }
 
     private void replicateMessageExpired(ConnectionContext context, MessageReference reference) {
-        final Message message = reference.getMessage();
+        Message message = reference.getMessage();
         if (!isReplicatedDestination(message.getDestination())) {
             return;
         }
         try {
-            final MessageAck ackToReplicate = createAckFromReference(reference, null);
+            MessageAck ackToReplicate = createAckFromReference(reference, null);
             enqueueReplicaEvent(
                 context,
                 new ReplicaEvent()
@@ -304,19 +323,19 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
         }
     }
 
-    private MessageAck createAckFromReference(final MessageReference reference, final ConsumerId consumerId) {
-        final MessageAck ack = new MessageAck(reference.getMessage(), MessageAck.INDIVIDUAL_ACK_TYPE, 1);
+    private MessageAck createAckFromReference(MessageReference reference, ConsumerId consumerId) {
+        MessageAck ack = new MessageAck(reference.getMessage(), MessageAck.INDIVIDUAL_ACK_TYPE, 1);
         ack.setConsumerId(consumerId);
         return ack;
     }
 
     @Override
-    public Set<Destination> getDestinations(final ActiveMQDestination destination) {
+    public Set<Destination> getDestinations(ActiveMQDestination destination) {
         return super.getDestinations(destination);
     }
 
     @Override // it seems like this acknowledge is a client->server connection where the broker server is telling the client, ACK, got it
-    public void acknowledge(final ConsumerBrokerExchange consumerExchange, final MessageAck ack) throws Exception {
+    public void acknowledge(ConsumerBrokerExchange consumerExchange, MessageAck ack) throws Exception {
         super.acknowledge(consumerExchange, ack);
 //        if (consumerExchange.getSubscription().isBrowser() || !isReplicatedDestination(ack.getDestination())) {
 //            return;
@@ -325,65 +344,110 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
     }
 
     @Override
-    public Response messagePull(final ConnectionContext context, final MessagePull pull) throws Exception {
+    public Response messagePull(ConnectionContext context, MessagePull pull) throws Exception {
         return super.messagePull(context, pull);
     }
 
     @Override
-    public Subscription addConsumer(final ConnectionContext context, final ConsumerInfo consumerInfo) throws Exception {
+    public Subscription addConsumer(ConnectionContext context, ConsumerInfo consumerInfo) throws Exception {
+        assertAuthorized(context,  consumerInfo.getDestination(), true);
+
         Subscription subscription = super.addConsumer(context, consumerInfo);
-        SubscriptionInfo subscriptionInfo = new SubscriptionInfo(
-            subscription.getConsumerInfo().getClientId(),
-            subscription.getConsumerInfo().getSubscriptionName()
-        );
-        subscriptionInfo.setSelector(subscription.getSelector());
-        subscriptionInfo.setDestination(subscriptionInfo.getDestination()); // TODO: durable subscribers?
+        // TODO do we need this?
+//        SubscriptionInfo subscriptionInfo = new SubscriptionInfo(
+//            subscription.getConsumerInfo().getClientId(),
+//            subscription.getConsumerInfo().getSubscriptionName()
+//        );
+//        subscriptionInfo.setSelector(subscription.getSelector());
+//        subscriptionInfo.setDestination(subscriptionInfo.getDestination()); // TODO: durable subscribers?
         return subscription;
     }
 
     @Override
-    public void commitTransaction(final ConnectionContext context, final TransactionId xid, final boolean onePhase) throws Exception {
+    public void addProducer(ConnectionContext context, ProducerInfo producerInfo) throws Exception {
+        // JMS allows producers to be created without first specifying a destination.  In these cases, every send
+        // operation must specify a destination.  Because of this, we only authorize 'addProducer' if a destination is
+        // specified. If not specified, the authz check in the 'send' method below will ensure authorization.
+        if (producerInfo.getDestination() != null) {
+            assertAuthorized(context, producerInfo.getDestination(), false);
+        }
+        super.addProducer(context, producerInfo);
+    }
+
+    private boolean isReplicationTransport(Connector connector) {
+        return connector instanceof TransportConnector && ((TransportConnector) connector).getName().endsWith(REPLICATION_CONNECTOR_NAME_SUFFIX);
+    }
+
+    protected void assertAuthorized(ConnectionContext context, ActiveMQDestination destination, boolean consumer) {
+        boolean replicationQueue = isReplicationQueue(destination);
+        boolean replicationTransport = isReplicationTransport(context.getConnector());
+
+        if (isSystemBroker(context)) {
+            return;
+        }
+        if (replicationTransport && consumer && (replicationQueue || isAdvisoryDestination(destination))) {
+            return;
+        }
+        if (!replicationTransport && !replicationQueue) {
+            return;
+        }
+
+        String msg = createUnauthorizedMessage(destination);
+        throw new ActiveMQReplicaException(msg);
+    }
+
+    private boolean isSystemBroker(ConnectionContext context) {
+        SecurityContext securityContext = context.getSecurityContext();
+        return securityContext != null && securityContext.isBrokerContext();
+    }
+
+    private String createUnauthorizedMessage(ActiveMQDestination destination) {
+        return "Not authorized to access destination: " + destination;
+    }
+
+    @Override
+    public void commitTransaction(ConnectionContext context, TransactionId xid, boolean onePhase) throws Exception {
         super.commitTransaction(context, xid, onePhase);
         replicateCommitTransaction(context, xid, onePhase);
     }
 
     @Override
-    public void removeSubscription(final ConnectionContext context, final RemoveSubscriptionInfo info) throws Exception {
+    public void removeSubscription(ConnectionContext context, RemoveSubscriptionInfo info) throws Exception {
         super.removeSubscription(context, info); // TODO: durable subscribers?
     }
 
     @Override
-    public TransactionId[] getPreparedTransactions(final ConnectionContext context) throws Exception {
+    public TransactionId[] getPreparedTransactions(ConnectionContext context) throws Exception {
         return super.getPreparedTransactions(context);
     }
 
     @Override
-    public int prepareTransaction(final ConnectionContext context, final TransactionId xid) throws Exception {
+    public int prepareTransaction(ConnectionContext context, TransactionId xid) throws Exception {
         int id = super.prepareTransaction(context, xid);
         replicatePrepareTransaction(context, xid);
         return id;
     }
 
     @Override
-    public void rollbackTransaction(final ConnectionContext context, final TransactionId xid) throws Exception {
+    public void rollbackTransaction(ConnectionContext context, TransactionId xid) throws Exception {
         super.rollbackTransaction(context, xid);
         replicateRollbackTransaction(context, xid);
     }
 
     @Override
-    public void send(final ProducerBrokerExchange producerExchange, final Message messageSend) throws Exception {
+    public void send(ProducerBrokerExchange producerExchange, Message messageSend) throws Exception {
         super.send(producerExchange, messageSend);
         replicateSend(producerExchange, messageSend, messageSend.getDestination());
     }
 
     @Override
-    public void beginTransaction(final ConnectionContext context, final TransactionId xid) throws Exception {
+    public void beginTransaction(ConnectionContext context, TransactionId xid) throws Exception {
         super.beginTransaction(context, xid);
         replicateBeginTransaction(context, xid);
     }
 
     @Override
-    public void forgetTransaction(final ConnectionContext context, final TransactionId transactionId) throws Exception {
+    public void forgetTransaction(ConnectionContext context, TransactionId transactionId) throws Exception {
         super.forgetTransaction(context, transactionId);
         replicateForgetTransaction(context, transactionId);
     }
@@ -394,7 +458,7 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
     }
 
     @Override
-    public Destination addDestination(final ConnectionContext context, final ActiveMQDestination destination, final boolean createIfTemporary)
+    public Destination addDestination(ConnectionContext context, ActiveMQDestination destination, boolean createIfTemporary)
         throws Exception {
         Destination newDestination = super.addDestination(context, destination, createIfTemporary);
         if (shouldReplicateDestination(destination)) {
@@ -408,7 +472,7 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
     }
 
     @Override
-    public void removeDestination(final ConnectionContext context, final ActiveMQDestination destination, final long timeout) throws Exception {
+    public void removeDestination(ConnectionContext context, ActiveMQDestination destination, long timeout) throws Exception {
         super.removeDestination(context, destination, timeout);
         replicateDestinationRemoval(destination);
     }
@@ -424,17 +488,17 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
     }
 
     @Override
-    public void preProcessDispatch(final MessageDispatch messageDispatch) {
+    public void preProcessDispatch(MessageDispatch messageDispatch) {
         super.preProcessDispatch(messageDispatch);
     }
 
     @Override
-    public void postProcessDispatch(final MessageDispatch messageDispatch) {
+    public void postProcessDispatch(MessageDispatch messageDispatch) {
         super.postProcessDispatch(messageDispatch);
     }
 
     @Override
-    public void processDispatchNotification(final MessageDispatchNotification messageDispatchNotification) throws Exception {
+    public void processDispatchNotification(MessageDispatchNotification messageDispatchNotification) throws Exception {
         super.processDispatchNotification(messageDispatchNotification);
     }
 
@@ -444,62 +508,62 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
     }
 
     @Override
-    public void addDestinationInfo(final ConnectionContext context, final DestinationInfo info) throws Exception {
+    public void addDestinationInfo(ConnectionContext context, DestinationInfo info) throws Exception {
         super.addDestinationInfo(context, info);
     }
 
     @Override
-    public void removeDestinationInfo(final ConnectionContext context, final DestinationInfo info) throws Exception {
+    public void removeDestinationInfo(ConnectionContext context, DestinationInfo info) throws Exception {
         super.removeDestinationInfo(context, info);
     }
 
     @Override
-    public void messageExpired(final ConnectionContext context, final MessageReference message, final Subscription subscription) {
+    public void messageExpired(ConnectionContext context, MessageReference message, Subscription subscription) {
         super.messageExpired(context, message, subscription);
         replicateMessageExpired(context, message);
     }
 
     @Override
-    public boolean sendToDeadLetterQueue(final ConnectionContext context, final MessageReference messageReference, final Subscription subscription,
-                                         final Throwable poisonCause) {
+    public boolean sendToDeadLetterQueue(ConnectionContext context, MessageReference messageReference, Subscription subscription,
+                                         Throwable poisonCause) {
         return super.sendToDeadLetterQueue(context, messageReference, subscription, poisonCause);
     }
 
     @Override
-    public void messageConsumed(final ConnectionContext context, final MessageReference messageReference) {
+    public void messageConsumed(ConnectionContext context, MessageReference messageReference) {
         super.messageConsumed(context, messageReference);
         replicateMessageConsumed(context, messageReference);
     }
 
     @Override
-    public void messageDelivered(final ConnectionContext context, final MessageReference messageReference) {
+    public void messageDelivered(ConnectionContext context, MessageReference messageReference) {
         super.messageDelivered(context, messageReference);
     }
 
     @Override
-    public void messageDiscarded(final ConnectionContext context, final Subscription sub, final MessageReference messageReference) {
+    public void messageDiscarded(ConnectionContext context, Subscription sub, MessageReference messageReference) {
         super.messageDiscarded(context, sub, messageReference);
         replicateMessageDiscarded(context, messageReference);
     }
 
     @Override
-    public void virtualDestinationAdded(final ConnectionContext context, final VirtualDestination virtualDestination) {
+    public void virtualDestinationAdded(ConnectionContext context, VirtualDestination virtualDestination) {
         super.virtualDestinationAdded(context, virtualDestination);
     }
 
     @Override
-    public void virtualDestinationRemoved(final ConnectionContext context, final VirtualDestination virtualDestination) {
+    public void virtualDestinationRemoved(ConnectionContext context, VirtualDestination virtualDestination) {
         super.virtualDestinationRemoved(context, virtualDestination);
     }
 
     @Override
     public void onDropMessage(QueueMessageReference reference) {
-        final Message message = reference.getMessage();
+        Message message = reference.getMessage();
         if (!isReplicatedDestination(message.getDestination())) {
             return;
         }
         try {
-            final MessageAck ackToReplicate = createAckFromReference(reference, null);
+            MessageAck ackToReplicate = createAckFromReference(reference, null);
             enqueueReplicaEvent(
                     getAdminConnectionContext(),
                     new ReplicaEvent()
@@ -515,32 +579,32 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
 
         private final ReplicaSourceBroker replicaSourceBroker;
 
-        ReplicationDestinationInterceptor(final ReplicaSourceBroker replicaSourceBroker) {
+        ReplicationDestinationInterceptor(ReplicaSourceBroker replicaSourceBroker) {
             this.replicaSourceBroker = replicaSourceBroker;
         }
 
         @Override
-        public Destination intercept(final Destination destination) {
+        public Destination intercept(Destination destination) {
             if (!replicaSourceBroker.isReplicatedDestination(destination.getActiveMQDestination())) {
                 return destination;
             }
             return new DestinationFilter(destination) {
 
                 @Override
-                protected void send(final ProducerBrokerExchange context, final Message message, final ActiveMQDestination destination)
+                protected void send(ProducerBrokerExchange context, Message message, ActiveMQDestination destination)
                     throws Exception {
                     super.send(context, message, destination);
                     replicaSourceBroker.replicateSend(context, message, destination);
                 }
 
                 @Override
-                public void acknowledge(final ConnectionContext context, final Subscription sub, final MessageAck ack,
-                                        final MessageReference node) throws IOException {
+                public void acknowledge(ConnectionContext context, Subscription sub, MessageAck ack,
+                                        MessageReference node) throws IOException {
                     super.acknowledge(context, sub, ack, node);
                     replicateAck(context, sub, ack);
                 }
 
-                private void replicateAck(final ConnectionContext context, final Subscription sub, final MessageAck ack) {
+                private void replicateAck(ConnectionContext context, Subscription sub, MessageAck ack) {
                     try {
                         replicaSourceBroker.enqueueReplicaEvent(
                                 context,
@@ -561,12 +625,12 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
         }
 
         @Override
-        public void remove(final Destination destination) {
+        public void remove(Destination destination) {
             replicaSourceBroker.replicateDestinationRemoval(destination.getActiveMQDestination());
         }
 
         @Override
-        public void create(final Broker broker, final ConnectionContext context, final ActiveMQDestination destination) throws Exception {
+        public void create(Broker broker, ConnectionContext context, ActiveMQDestination destination) throws Exception {
             if (replicaSourceBroker.shouldReplicateDestination(destination)) {
                 replicaSourceBroker.replicateDestinationCreation(context, destination);
             }

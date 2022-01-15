@@ -116,7 +116,7 @@ xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.sprin
     </shutdownHooks>
 
     <plugins>
-        <replicaPlugin role="source" />
+        <replicaPlugin role="source" transportConnectorUri="tcp://0.0.0.0:61618?maximumConnections=1&amp;wireFormat.maxFrameSize=104857600"/>
     </plugins>
 </broker>
 

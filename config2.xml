@@ -115,7 +115,7 @@
         </shutdownHooks>
 
         <plugins>
-            <replicaPlugin role="replica" otherBrokerUri="tcp://localhost:61616" />
+            <replicaPlugin role="replica" otherBrokerUri="tcp://localhost:61618" />
         </plugins>
     </broker>
 

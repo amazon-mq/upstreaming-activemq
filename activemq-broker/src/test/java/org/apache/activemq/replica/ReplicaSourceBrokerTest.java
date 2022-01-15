@@ -5,6 +5,7 @@ import org.apache.activemq.broker.Broker;
 import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.broker.ConnectionContext;
 import org.apache.activemq.broker.ProducerBrokerExchange;
+import org.apache.activemq.broker.TransportConnector;
 import org.apache.activemq.broker.region.DestinationInterceptor;
 import org.apache.activemq.broker.region.IndirectMessageReference;
 import org.apache.activemq.broker.region.Queue;
@@ -12,16 +13,19 @@ import org.apache.activemq.command.ActiveMQDestination;
 import org.apache.activemq.command.ActiveMQMessage;
 import org.apache.activemq.command.ActiveMQQueue;
 import org.apache.activemq.command.ConnectionId;
+import org.apache.activemq.command.ConsumerInfo;
 import org.apache.activemq.command.LocalTransactionId;
 import org.apache.activemq.command.ActiveMQTopic;
 import org.apache.activemq.command.MessageAck;
 import org.apache.activemq.command.MessageId;
+import org.apache.activemq.command.ProducerInfo;
 import org.apache.activemq.command.TransactionId;
 import org.apache.activemq.filter.DestinationMapEntry;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 
+import java.net.URI;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -44,8 +48,10 @@ public class ReplicaSourceBrokerTest {
     private final BrokerService brokerService = mock(BrokerService.class);
     private final ConnectionContext connectionContext = mock(ConnectionContext.class);
 
-    private final ReplicaSourceBroker source = new ReplicaSourceBroker(broker);
+    private final URI transportConnectorUri = URI.create("tcp://0.0.0.0:61618?maximumConnections=1&amp;wireFormat.maxFrameSize=104857600");
+    private final ReplicaSourceBroker source = new ReplicaSourceBroker(broker, transportConnectorUri);
     private final ReplicaEventSerializer eventSerializer = new ReplicaEventSerializer();
+    private TransportConnector transportConnector = mock(TransportConnector.class);
 
     private final ActiveMQQueue testDestination = new ActiveMQQueue("TEST.QUEUE");
 
@@ -55,7 +61,9 @@ public class ReplicaSourceBrokerTest {
         when(broker.getAdminConnectionContext()).thenReturn(connectionContext);
         when(brokerService.getBroker()).thenReturn(source);
         when(brokerService.getDestinationInterceptors()).thenReturn(new DestinationInterceptor[] {});
+        when(brokerService.addConnector(transportConnectorUri)).thenReturn(transportConnector);
         when(connectionContext.isProducerFlowControl()).thenReturn(true);
+        when(connectionContext.getConnector()).thenReturn(transportConnector);
 
         source.destinationsToReplicate.put(testDestination, IS_REPLICATED);
     }
@@ -96,7 +104,7 @@ public class ReplicaSourceBrokerTest {
     }
 
     @Test
-    public void doesNotCreateDestinationEventsForNonReplicabledDestinations() throws Exception {
+    public void doesNotCreateDestinationEventsForNonReplicableDestinations() throws Exception {
         source.start();
 
         ActiveMQTopic advisoryTopic = new ActiveMQTopic(AdvisorySupport.ADVISORY_TOPIC_PREFIX + "TEST");
@@ -115,6 +123,114 @@ public class ReplicaSourceBrokerTest {
         assertThat(advisoryTopicDestination).isEqualTo(advisoryTopic);
 
         verify(broker, never()).send(any(), any());
+    }
+
+    @Test
+    public void letsCreateConsumerForReplicaQueueFromReplicaConnection() throws Exception {
+        source.start();
+
+        when(transportConnector.getName()).thenReturn("test" + ReplicaSourceBroker.REPLICATION_CONNECTOR_NAME_SUFFIX);
+
+        ConsumerInfo consumerInfo = new ConsumerInfo();
+        consumerInfo.setDestination(source.queueProvider.get());
+        source.addConsumer(connectionContext, consumerInfo);
+
+        verify(broker).addConsumer(eq(connectionContext), eq(consumerInfo));
+    }
+
+    @Test(expected = ActiveMQReplicaException.class)
+    public void doesNotLetCreateConsumerForReplicaQueueFromNonReplicaConnection() throws Exception {
+        source.start();
+
+        when(transportConnector.getName()).thenReturn("test");
+
+        ConsumerInfo consumerInfo = new ConsumerInfo();
+        consumerInfo.setDestination(source.queueProvider.get());
+        source.addConsumer(connectionContext, consumerInfo);
+    }
+
+    @Test
+    public void letsCreateConsumerForNonReplicaAdvisoryTopicFromReplicaConnection() throws Exception {
+        source.start();
+
+        when(transportConnector.getName()).thenReturn("test" + ReplicaSourceBroker.REPLICATION_CONNECTOR_NAME_SUFFIX);
+
+        ActiveMQTopic advisoryTopic = new ActiveMQTopic(AdvisorySupport.ADVISORY_TOPIC_PREFIX + "TEST");
+        ConsumerInfo consumerInfo = new ConsumerInfo();
+        consumerInfo.setDestination(advisoryTopic);
+        source.addConsumer(connectionContext, consumerInfo);
+
+        verify(broker).addConsumer(eq(connectionContext), eq(consumerInfo));
+    }
+
+    @Test
+    public void letsCreateConsumerForNonReplicaQueueFromNonReplicaConnection() throws Exception {
+        source.start();
+
+        when(transportConnector.getName()).thenReturn("test");
+
+        ConsumerInfo consumerInfo = new ConsumerInfo();
+        consumerInfo.setDestination(testDestination);
+        source.addConsumer(connectionContext, consumerInfo);
+
+        verify(broker).addConsumer(eq(connectionContext), eq(consumerInfo));
+    }
+
+    @Test(expected = ActiveMQReplicaException.class)
+    public void doesNoLetCreateConsumerForNonReplicaQueueFromReplicaConnection() throws Exception {
+        source.start();
+
+        when(transportConnector.getName()).thenReturn("test" + ReplicaSourceBroker.REPLICATION_CONNECTOR_NAME_SUFFIX);
+
+        ConsumerInfo consumerInfo = new ConsumerInfo();
+        consumerInfo.setDestination(testDestination);
+        source.addConsumer(connectionContext, consumerInfo);
+    }
+
+    @Test(expected = ActiveMQReplicaException.class)
+    public void doesNotLetCreateProducerForReplicaQueueFromNonReplicaConnection() throws Exception {
+        source.start();
+
+        when(transportConnector.getName()).thenReturn("test");
+
+        ProducerInfo producerInfo = new ProducerInfo();
+        producerInfo.setDestination(source.queueProvider.get());
+        source.addProducer(connectionContext, producerInfo);
+    }
+
+    @Test(expected = ActiveMQReplicaException.class)
+    public void doesNotLetCreateProducerForReplicaQueueFromReplicaConnection() throws Exception {
+        source.start();
+
+        when(transportConnector.getName()).thenReturn("test" + ReplicaSourceBroker.REPLICATION_CONNECTOR_NAME_SUFFIX);
+
+        ProducerInfo producerInfo = new ProducerInfo();
+        producerInfo.setDestination(source.queueProvider.get());
+        source.addProducer(connectionContext, producerInfo);
+    }
+
+    @Test
+    public void letsCreateProducerForNonReplicaQueueFromNonReplicaConnection() throws Exception {
+        source.start();
+
+        when(transportConnector.getName()).thenReturn("test");
+
+        ProducerInfo producerInfo = new ProducerInfo();
+        producerInfo.setDestination(testDestination);
+        source.addProducer(connectionContext, producerInfo);
+
+        verify(broker).addProducer(eq(connectionContext), eq(producerInfo));
+    }
+
+    @Test(expected = ActiveMQReplicaException.class)
+    public void doesNotLetCreateProducerForNonReplicaQueueFromReplicaConnection() throws Exception {
+        source.start();
+
+        when(transportConnector.getName()).thenReturn("test" + ReplicaSourceBroker.REPLICATION_CONNECTOR_NAME_SUFFIX);
+
+        ProducerInfo producerInfo = new ProducerInfo();
+        producerInfo.setDestination(testDestination);
+        source.addProducer(connectionContext, producerInfo);
     }
 
     @Test
