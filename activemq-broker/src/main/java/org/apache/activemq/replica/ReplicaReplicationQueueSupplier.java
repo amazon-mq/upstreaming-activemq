@@ -50,13 +50,13 @@ public class ReplicaReplicationQueueSupplier implements Supplier<ActiveMQQueue> 
         Optional<ActiveMQDestination> existingReplicationQueue = broker.getDurableDestinations()
             .stream()
             .filter(ActiveMQDestination::isQueue)
-            .filter(d -> d.getPhysicalName().startsWith(ReplicaSupport.REPLICATION_QUEUE_PREFIX))
+            .filter(d -> ReplicaSupport.REPLICATION_QUEUE_NAME.equals(d.getPhysicalName()))
             .findFirst();
         if (existingReplicationQueue.isPresent()) {
             logger.debug("Existing replication queue {}", existingReplicationQueue.get().getPhysicalName());
             return new ActiveMQQueue(existingReplicationQueue.get().getPhysicalName());
         } else {
-            String mirrorQueueName = new IdGenerator(ReplicaSupport.REPLICATION_QUEUE_PREFIX).generateId();
+            String mirrorQueueName = ReplicaSupport.REPLICATION_QUEUE_NAME;
             ActiveMQQueue newReplicationQueue = new ActiveMQQueue(mirrorQueueName);
             broker.getBrokerService().getBroker().addDestination(
                 broker.getAdminConnectionContext(),

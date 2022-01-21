@@ -2,11 +2,13 @@ package org.apache.activemq.replica;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
+import static org.mockito.Mockito.mock;
 
 import java.net.URI;
 import java.util.Arrays;
 
 import org.apache.activemq.ActiveMQConnectionFactory;
+import org.apache.activemq.broker.Broker;
 import org.assertj.core.api.SoftAssertions;
 import org.junit.Test;
 
@@ -89,5 +91,81 @@ public class ReplicaPluginTest {
 
         assertThat(exception).isNotNull().isEqualToComparingFieldByField(expected);
     }
+
+    @Test
+    public void canSetUserName() {
+        final String userName = "testUser";
+
+        plugin.setUserName(userName);
+
+        assertThat(plugin.otherBrokerConnectionFactory.getUserName()).isEqualTo(userName);
+    }
+
+    @Test
+    public void canSetPassword() {
+        final String password = "testPassword";
+
+        plugin.setPassword(password);
+
+        assertThat(plugin.otherBrokerConnectionFactory.getPassword()).isEqualTo(password);
+    }
+
+    @Test
+    public void canSetUserNameAndPassword() {
+        final String userUsername = "testUser";
+        final String password = "testPassword";
+
+        plugin.setUserName(userUsername);
+        plugin.setPassword(password);
+
+        assertThat(plugin.otherBrokerConnectionFactory.getUserName()).isEqualTo(userUsername);
+        assertThat(plugin.otherBrokerConnectionFactory.getPassword()).isEqualTo(password);
+    }
+
+    @Test(expected = NullPointerException.class)
+    public void shouldThrowExceptionIfUserIsSetAndPasswordIsNotForReplica() {
+        final String userName = "testUser";
+        final Broker broker = mock(Broker.class);
+        final String replicationTransport = "tcp://localhost:61616";
+
+        plugin.setRole(ReplicaRole.replica);
+        plugin.setUserName(userName);
+        plugin.setTransportConnectorUri(replicationTransport);
+        plugin.installPlugin(broker);
+
+        assertThat(plugin.otherBrokerConnectionFactory.getUserName()).isEqualTo(userName);
+    }
+
+    @Test(expected = NullPointerException.class)
+    public void shouldThrowExceptionIfPasswordIsSetAndUserNameIsNotForReplica() {
+        final String password = "testPassword";
+        final Broker broker = mock(Broker.class);
+        final String replicationTransport = "tcp://localhost:61616";
+
+        plugin.setRole(ReplicaRole.replica);
+        plugin.setPassword(password);
+        plugin.setTransportConnectorUri(replicationTransport);
+        plugin.installPlugin(broker);
+
+        assertThat(plugin.otherBrokerConnectionFactory.getPassword()).isEqualTo(password);
+    }
+
+    @Test
+    public void shouldNotThrowExceptionIfBothUserAndPasswordIsSetForReplica() {
+        final String user = "testUser";
+        final String password = "testPassword";
+        final Broker broker = mock(Broker.class);
+        final String replicationTransport = "tcp://localhost:61616";
+
+        plugin.setRole(ReplicaRole.replica);
+        plugin.setPassword(password);
+        plugin.setUserName(user);
+        plugin.setTransportConnectorUri(replicationTransport);
+        plugin.installPlugin(broker);
+
+        assertThat(plugin.otherBrokerConnectionFactory.getUserName()).isEqualTo(user);
+        assertThat(plugin.otherBrokerConnectionFactory.getPassword()).isEqualTo(password);
+    }
+
 
 }

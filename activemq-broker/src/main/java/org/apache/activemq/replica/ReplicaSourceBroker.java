@@ -35,7 +35,6 @@ import org.apache.activemq.command.ProducerId;
 import org.apache.activemq.command.ProducerInfo;
 import org.apache.activemq.command.RemoveSubscriptionInfo;
 import org.apache.activemq.command.Response;
-import org.apache.activemq.command.SubscriptionInfo;
 import org.apache.activemq.command.TransactionId;
 import org.apache.activemq.filter.DestinationMap;
 import org.apache.activemq.filter.DestinationMapEntry;
@@ -113,7 +112,7 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
     }
 
     private boolean isReplicationQueue(ActiveMQDestination destination) {
-        return destination.getPhysicalName().startsWith(ReplicaSupport.REPLICATION_QUEUE_PREFIX);
+        return ReplicaSupport.REPLICATION_QUEUE_NAME.equals(destination.getPhysicalName());
     }
 
     public boolean isReplicatedDestination(ActiveMQDestination destination) {
@@ -463,8 +462,7 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
         Destination newDestination = super.addDestination(context, destination, createIfTemporary);
         if (shouldReplicateDestination(destination)) {
             replicateDestinationCreation(context, destination);
-
-            if (destination.isQueue() && !((Queue) newDestination).getListeners().contains(this)) {
+            if (newDestination instanceof Queue && !((Queue) newDestination).getListeners().contains(this)) {
                 ((Queue) newDestination).addListener(this);
             }
         }

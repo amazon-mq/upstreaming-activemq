@@ -33,6 +33,16 @@ public class ReplicaBroker extends BrokerFilter {
         super(next);
         this.replicaSourceConnectionFactory = requireNonNull(replicaSourceConnectionFactory, "Need connection details of replica source for this broker");
         requireNonNull(replicaSourceConnectionFactory.getBrokerURL(), "Need connection URI of replica source for this broker");
+        validateUser(replicaSourceConnectionFactory);
+    }
+
+    private void validateUser(ActiveMQConnectionFactory replicaSourceConnectionFactory) {
+        if (replicaSourceConnectionFactory.getUserName() != null) {
+            requireNonNull(replicaSourceConnectionFactory.getPassword(), "Both userName and password or none of them should be configured for replica broker");
+        }
+        if (replicaSourceConnectionFactory.getPassword() != null) {
+            requireNonNull(replicaSourceConnectionFactory.getUserName(), "Both userName and password or none of them should be configured for replica broker");
+        }
     }
 
     @Override
@@ -119,7 +129,7 @@ public class ReplicaBroker extends BrokerFilter {
             .getDestinationSource()
             .getQueues()
             .stream()
-            .filter(d -> d.getPhysicalName().startsWith(ReplicaSupport.REPLICATION_QUEUE_PREFIX))
+            .filter(d -> ReplicaSupport.REPLICATION_QUEUE_NAME.equals(d.getPhysicalName()))
             .findFirst()
             .orElseThrow(() -> new IllegalStateException(
                 MessageFormat.format("There is no replication queue on the source broker {0}", replicaSourceConnectionFactory.getBrokerURL())

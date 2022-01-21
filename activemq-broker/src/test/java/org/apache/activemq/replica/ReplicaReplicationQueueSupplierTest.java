@@ -38,14 +38,14 @@ public class ReplicaReplicationQueueSupplierTest {
         supplier.initialize();
 
         ActiveMQQueue activeMQQueue = supplier.get();
-        assertThat(activeMQQueue.getPhysicalName()).contains(ReplicaSupport.REPLICATION_QUEUE_PREFIX);
+        assertThat(activeMQQueue.getPhysicalName()).isEqualTo(ReplicaSupport.REPLICATION_QUEUE_NAME);
 
         verify(broker).addDestination(eq(connectionContext), eq(activeMQQueue), eq(false));
     }
 
     @Test
     public void notCreateQueueIfExists() throws Exception {
-        ActiveMQQueue replicationQueue = new ActiveMQQueue(ReplicaSupport.REPLICATION_QUEUE_PREFIX + "_test");
+        ActiveMQQueue replicationQueue = new ActiveMQQueue(ReplicaSupport.REPLICATION_QUEUE_NAME);
 
         when(broker.getDurableDestinations()).thenReturn(Collections.singleton(replicationQueue));
 

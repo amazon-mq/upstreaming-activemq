@@ -20,7 +20,7 @@ public class ReplicaPlugin extends BrokerPluginSupport {
     private final Logger logger = LoggerFactory.getLogger(ReplicaPlugin.class);
 
     protected ReplicaRole role = ReplicaRole.source;
-    protected ActiveMQConnectionFactory otherBrokerConnectionFactory = null;
+    protected ActiveMQConnectionFactory otherBrokerConnectionFactory = new ActiveMQConnectionFactory();
     protected URI transportConnectorUri = null;
 
     public ReplicaPlugin() {
@@ -59,14 +59,12 @@ public class ReplicaPlugin extends BrokerPluginSupport {
      * @org.apache.xbean.Property propertyEditor="com.sun.beans.editors.StringEditor"
      */
     public void setOtherBrokerUri(String uri) {
-        ActiveMQConnectionFactory connectionFactory = new ActiveMQConnectionFactory();
-        connectionFactory.setBrokerURL(uri); // once to validate
-        connectionFactory.setBrokerURL(
+        otherBrokerConnectionFactory.setBrokerURL(uri); // once to validate
+        otherBrokerConnectionFactory.setBrokerURL(
             uri.toLowerCase().startsWith("failover:(")
                 ? uri
                 : "failover:("+uri+")"
         );
-        this.otherBrokerConnectionFactory = connectionFactory;
     }
 
     /**
@@ -74,6 +72,20 @@ public class ReplicaPlugin extends BrokerPluginSupport {
      */
     public void setTransportConnectorUri(String uri) {
         transportConnectorUri = URI.create(uri);
+    }
+
+    /**
+     * @org.apache.xbean.Property propertyEditor="com.sun.beans.editors.StringEditor"
+     */
+    public void setUserName(String userName) {
+        otherBrokerConnectionFactory.setUserName(userName);
+    }
+
+    /**
+     * @org.apache.xbean.Property propertyEditor="com.sun.beans.editors.StringEditor"
+     */
+    public void setPassword(String password) {
+        otherBrokerConnectionFactory.setPassword(password);
     }
 
     public ReplicaRole getRole() {
