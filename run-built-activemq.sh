@@ -21,9 +21,15 @@ copy_and_start() {
   cp -R broker1 broker2
 
   cp ../../config1.xml ./broker1/conf/activemq.xml
+  cp ../../users1.properties ./broker1/conf/users.properties
+  cp ../../groups1.properties ./broker1/conf/groups.properties
+  cp ../../login.config ./broker1/conf/login.config
 #  cp ../../log4j.properties ./broker1/conf/log4j.properties
 
   cp ../../config2.xml ./broker2/conf/activemq.xml
+  cp ../../users2.properties ./broker2/conf/users.properties
+  cp ../../groups2.properties ./broker2/conf/groups.properties
+  cp ../../login.config ./broker2/conf/login.config
   cp ../../console2.xml ./broker2/conf/jetty.xml
 #  cp ../../log4j.properties ./broker2/conf/log4j.properties
 

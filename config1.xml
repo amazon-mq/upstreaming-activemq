@@ -117,6 +117,19 @@ xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.sprin
 
     <plugins>
         <replicaPlugin role="source" transportConnectorUri="tcp://0.0.0.0:61618?maximumConnections=1&amp;wireFormat.maxFrameSize=104857600"/>
+        <jaasAuthenticationPlugin configuration="activemq-domain" />
+        <authorizationPlugin>
+            <map>
+                <authorizationMap>
+                    <authorizationEntries>
+                        <authorizationEntry topic=">" read="admins" write="admins" admin="admins" />
+                        <authorizationEntry queue=">" read="admins" write="admins" admin="admins" />
+                        <authorizationEntry topic="ActiveMQ.Advisory.>" read="guests,replica" write="guests,replica" admin="guests,replica"/>
+                        <authorizationEntry queue="ActiveMQ.Plugin.Replication.Queue" read="replica" />
+                    </authorizationEntries>
+                </authorizationMap>
+            </map>
+        </authorizationPlugin>
     </plugins>
 </broker>
 
