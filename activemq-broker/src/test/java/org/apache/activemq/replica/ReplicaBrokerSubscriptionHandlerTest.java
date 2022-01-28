@@ -8,6 +8,7 @@ import org.junit.Test;
 public class ReplicaBrokerSubscriptionHandlerTest {
 
     @Test
+    @Ignore
     public void canCreateSubscriptionForReplication() {
         fail("Implement me");
     }

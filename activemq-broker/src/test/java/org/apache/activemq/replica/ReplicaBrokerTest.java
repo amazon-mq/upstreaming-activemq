@@ -7,6 +7,7 @@ import static org.mockito.Mockito.mock;
 
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.broker.Broker;
+import org.junit.Ignore;
 import org.junit.Test;
 
 public class ReplicaBrokerTest {
@@ -30,6 +31,7 @@ public class ReplicaBrokerTest {
     }
 
     @Test
+    @Ignore
     public void connectsToSourceBroker() {
         fail("Needs writing");
     }
