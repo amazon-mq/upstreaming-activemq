@@ -11,6 +11,7 @@ import org.apache.activemq.command.ActiveMQDestination;
 import org.apache.activemq.command.ActiveMQMessage;
 import org.apache.activemq.command.ActiveMQQueue;
 import org.apache.activemq.command.ConnectionId;
+import org.apache.activemq.command.ConsumerInfo;
 import org.apache.activemq.command.LocalTransactionId;
 import org.apache.activemq.command.MessageAck;
 import org.apache.activemq.command.MessageId;
@@ -41,18 +42,18 @@ public class ReplicaBrokerEventListenerTest {
     private final ActiveMQQueue testQueue = new ActiveMQQueue("TEST.QUEUE");
     private final Destination destinationQueue = mock(Queue.class);
     private final ConnectionContext connectionContext = mock(ConnectionContext.class);
-    private final ReplicaBrokerSubscriptionHandler subscriptionHandler = mock(ReplicaBrokerSubscriptionHandler.class);
 
-    private final ReplicaBrokerEventListener listener = new ReplicaBrokerEventListener(broker, subscriptionHandler);
+    private final ReplicaBrokerEventListener listener = new ReplicaBrokerEventListener(broker);
     private final ReplicaEventSerializer eventSerializer = new ReplicaEventSerializer();
 
     @Before
     public void setUp() throws Exception {
         when(broker.getAdminConnectionContext()).thenReturn(connectionContext);
-        when(broker.getDestinations(any())).thenReturn(Set.of(destinationQueue));
+        when(broker.getDestinations(testQueue)).thenReturn(Set.of(destinationQueue));
         when(connectionContext.isProducerFlowControl()).thenReturn(true);
         when(broker.getAdaptor(RegionBroker.class)).thenReturn(regionBroker);
         when(regionBroker.getRegion(testQueue)).thenReturn(region);
+        when(connectionContext.copy()).thenReturn(new ConnectionContext());
     }
 
     @Test
@@ -159,30 +160,7 @@ public class ReplicaBrokerEventListenerTest {
     }
 
     @Test
-    public void canHandleEventOfType_MESSAGE_ACK_whenDestinationNotFound() throws Exception {
-        when(broker.getDestinations(any())).thenReturn(Collections.emptySet());
-        MessageId messageId = new MessageId("1:1:1:1");
-        ActiveMQMessage message = new ActiveMQMessage();
-        message.setMessageId(messageId);
-        message.setDestination(testQueue);
-        final MessageAck ack = spy(new MessageAck(message, MessageAck.INDIVIDUAL_ACK_TYPE, 1));
-        ReplicaEvent event = new ReplicaEvent()
-            .setEventType(ReplicaEventType.MESSAGE_ACK)
-            .setEventData(eventSerializer.serializeReplicationData(ack));
-        ActiveMQMessage replicaEventMessage = spy(new ActiveMQMessage());
-        replicaEventMessage.setType("ReplicaEvent");
-        replicaEventMessage.setStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY, event.getEventType().name());
-        replicaEventMessage.setContent(event.getEventData());
-
-        listener.onMessage(replicaEventMessage);
-        verify(replicaEventMessage).acknowledge();
-        verify(ack, never()).setConsumerId(any());
-        verify(region, never()).acknowledge(any(), eq(ack));
-    }
-
-    @Test
-    public void canHandleEventOfType_MESSAGE_ACK_whenDestinationExists() throws Exception {
-        when(destinationQueue.getActiveMQDestination()).thenReturn(testQueue);
+    public void canHandleEventOfType_MESSAGE_ACK() throws Exception {
         MessageId messageId = new MessageId("1:1:1:1");
         ActiveMQMessage message = new ActiveMQMessage();
         message.setMessageId(messageId);
@@ -200,33 +178,9 @@ public class ReplicaBrokerEventListenerTest {
 
         verify(replicaEventMessage).acknowledge();
         ArgumentCaptor<ConsumerBrokerExchange> consumerBrokerExchangeArgumentCaptor = ArgumentCaptor.forClass(ConsumerBrokerExchange.class);
-        verify(region).acknowledge(consumerBrokerExchangeArgumentCaptor.capture(), any());
+        verify(broker).acknowledge(consumerBrokerExchangeArgumentCaptor.capture(), any());
         ConsumerBrokerExchange calledConsumerBrokerExchange = consumerBrokerExchangeArgumentCaptor.getValue();
-        assertThat(calledConsumerBrokerExchange.getRegion()).isEqualTo(broker);
-        assertThat(calledConsumerBrokerExchange.getRegionDestination()).isEqualTo(destinationQueue);
         assertThat(calledConsumerBrokerExchange.getConnectionContext()).isEqualTo(connectionContext);
-    }
-
-    @Test
-    public void canHandleEventOfType_MESSAGE_CONSUMED() throws Exception {
-        MessageId messageId = new MessageId("1:1:1:1");
-        ActiveMQMessage message = new ActiveMQMessage();
-        message.setMessageId(messageId);
-        message.setDestination(testQueue);
-        final MessageAck ack = new MessageAck(message, MessageAck.INDIVIDUAL_ACK_TYPE, 1);
-        ReplicaEvent event = new ReplicaEvent()
-                .setEventType(ReplicaEventType.MESSAGE_CONSUMED)
-                .setEventData(eventSerializer.serializeReplicationData(ack));
-        ActiveMQMessage replicaEventMessage = spy(new ActiveMQMessage());
-        replicaEventMessage.setType("ReplicaEvent");
-        replicaEventMessage.setStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY, event.getEventType().name());
-        replicaEventMessage.setContent(event.getEventData());
-
-        listener.onMessage(replicaEventMessage);
-
-        verify((Queue) destinationQueue, times(1)).removeMessage(messageId.toString());
-
-        verify(replicaEventMessage).acknowledge();
     }
 
     @Test
@@ -403,6 +357,62 @@ public class ReplicaBrokerEventListenerTest {
         verify((Queue) destinationQueue, times(1)).removeMessage(messageId.toString());
 
         verify(replicaEventMessage).acknowledge();
+    }
+
+    @Test
+    public void canHandleEventOfType_ADD_CONSUMER() throws Exception {
+        MessageId messageId = new MessageId("1:1");
+        ConsumerInfo consumerInfo = new ConsumerInfo();
+        consumerInfo.setDestination(testQueue);
+        ActiveMQMessage message = spy(new ActiveMQMessage());
+        message.setMessageId(messageId);
+        String clientId = "clientId";
+        ReplicaEvent event = new ReplicaEvent()
+                .setEventType(ReplicaEventType.ADD_CONSUMER)
+                .setEventData(eventSerializer.serializeReplicationData(consumerInfo))
+                .setReplicationProperty(ReplicaSupport.CLIENT_ID_PROPERTY, clientId);
+        message.setContent(event.getEventData());
+        message.setProperties(event.getReplicationProperties());
+        message.setStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY, event.getEventType().name());
+
+        listener.onMessage(message);
+
+        ArgumentCaptor<ConsumerInfo> messageArgumentCaptor = ArgumentCaptor.forClass(ConsumerInfo.class);
+        ArgumentCaptor<ConnectionContext> connectionContextArgumentCaptor = ArgumentCaptor.forClass(ConnectionContext.class);
+        verify(broker).addConsumer(connectionContextArgumentCaptor.capture(), messageArgumentCaptor.capture());
+        ConsumerInfo value = messageArgumentCaptor.getValue();
+        assertThat(value.getDestination()).isEqualTo(testQueue);
+        ConnectionContext connectionContext = connectionContextArgumentCaptor.getValue();
+        assertThat(connectionContext.getClientId()).isEqualTo(clientId);
+        verify(message).acknowledge();
+    }
+
+    @Test
+    public void canHandleEventOfType_REMOVE_CONSUMER() throws Exception {
+        MessageId messageId = new MessageId("1:1");
+        ConsumerInfo consumerInfo = new ConsumerInfo();
+        consumerInfo.setDestination(testQueue);
+        ActiveMQMessage message = spy(new ActiveMQMessage());
+        message.setMessageId(messageId);
+        String clientId = "clientId";
+        ReplicaEvent event = new ReplicaEvent()
+                .setEventType(ReplicaEventType.REMOVE_CONSUMER)
+                .setEventData(eventSerializer.serializeReplicationData(consumerInfo))
+                .setReplicationProperty(ReplicaSupport.CLIENT_ID_PROPERTY, clientId);
+        message.setContent(event.getEventData());
+        message.setProperties(event.getReplicationProperties());
+        message.setStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY, event.getEventType().name());
+
+        listener.onMessage(message);
+
+        ArgumentCaptor<ConsumerInfo> messageArgumentCaptor = ArgumentCaptor.forClass(ConsumerInfo.class);
+        ArgumentCaptor<ConnectionContext> connectionContextArgumentCaptor = ArgumentCaptor.forClass(ConnectionContext.class);
+        verify(broker).removeConsumer(connectionContextArgumentCaptor.capture(), messageArgumentCaptor.capture());
+        ConsumerInfo value = messageArgumentCaptor.getValue();
+        assertThat(value.getDestination()).isEqualTo(testQueue);
+        ConnectionContext connectionContext = connectionContextArgumentCaptor.getValue();
+        assertThat(connectionContext.getClientId()).isEqualTo(clientId);
+        verify(message).acknowledge();
     }
 
     @Test

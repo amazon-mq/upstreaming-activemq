@@ -5,7 +5,6 @@ public enum ReplicaEventType {
     DESTINATION_DELETE,
     MESSAGE_SEND,
     MESSAGE_ACK,
-    MESSAGE_CONSUMED,
     MESSAGE_DISCARDED,
     MESSAGE_DROPPED,
     TRANSACTION_BEGIN,
@@ -15,7 +14,9 @@ public enum ReplicaEventType {
     TRANSACTION_FORGET,
     MESSAGE_EXPIRED,
     SUBSCRIBER_REMOVED,
-    SUBSCRIBER_ADDED;
+    SUBSCRIBER_ADDED,
+    REMOVE_CONSUMER,
+    ADD_CONSUMER;
 
     static final String EVENT_TYPE_PROPERTY = "ActiveMQ.Replication.EventType";
 }

@@ -1,19 +1,18 @@
 package org.apache.activemq.replica;
 
 import org.apache.activemq.broker.Broker;
+import org.apache.activemq.broker.ConnectionContext;
 import org.apache.activemq.broker.ConsumerBrokerExchange;
 import org.apache.activemq.broker.region.AbstractRegion;
 import org.apache.activemq.broker.region.Destination;
 import org.apache.activemq.broker.region.DurableTopicSubscription;
 import org.apache.activemq.broker.region.IndirectMessageReference;
 import org.apache.activemq.broker.region.Queue;
-import org.apache.activemq.broker.region.Region;
-import org.apache.activemq.broker.region.RegionBroker;
 import org.apache.activemq.broker.region.Subscription;
 import org.apache.activemq.broker.region.Topic;
 import org.apache.activemq.command.ActiveMQDestination;
 import org.apache.activemq.command.ActiveMQMessage;
-import org.apache.activemq.command.ConsumerId;
+import org.apache.activemq.command.ConsumerInfo;
 import org.apache.activemq.command.MessageAck;
 import org.apache.activemq.command.TransactionId;
 import org.apache.activemq.util.ByteSequence;
@@ -34,16 +33,10 @@ public class ReplicaBrokerEventListener implements MessageListener {
 
     private final Logger logger = LoggerFactory.getLogger(ReplicaBrokerEventListener.class);
     private final ReplicaEventSerializer eventSerializer = new ReplicaEventSerializer();
-    private final ReplicaBrokerSubscriptionHandler subscriptionHandler;
     private final Broker broker;
 
     ReplicaBrokerEventListener(final Broker broker) {
-        this(broker, new ReplicaBrokerSubscriptionHandler(broker));
-    }
-
-    ReplicaBrokerEventListener(final Broker broker, final ReplicaBrokerSubscriptionHandler subscriptionHandler) {
         this.broker = requireNonNull(broker);
-        this.subscriptionHandler = requireNonNull(subscriptionHandler);
     }
 
     @Override
@@ -64,7 +57,6 @@ public class ReplicaBrokerEventListener implements MessageListener {
                         logger.trace("Processing replicated message ack");
                         consumeAck((MessageAck) deserializedData);
                         return;
-                    case MESSAGE_CONSUMED: // TODO: make sure advisory correctly fired
                     case MESSAGE_EXPIRED:
                     case MESSAGE_DISCARDED:
                     case MESSAGE_DROPPED:
@@ -105,6 +97,24 @@ public class ReplicaBrokerEventListener implements MessageListener {
                             logger.error("Failed to extract property to replicate transaction commit with id [{}]", deserializedData, e);
                         }
                         return;
+                    case ADD_CONSUMER:
+                        logger.trace("Processing replicated add consumer");
+                        try {
+                            addConsumer((ConsumerInfo) deserializedData,
+                                    message.getStringProperty(ReplicaSupport.CLIENT_ID_PROPERTY));
+                        } catch (JMSException e) {
+                            logger.error("Failed to extract property to replicate add consumer [{}]", deserializedData, e);
+                        }
+                        return;
+                    case REMOVE_CONSUMER:
+                        logger.trace("Processing replicated remove consumer");
+                        try {
+                            removeConsumer((ConsumerInfo) deserializedData,
+                                    message.getStringProperty(ReplicaSupport.CLIENT_ID_PROPERTY));
+                        } catch (JMSException e) {
+                            logger.error("Failed to extract property to replicate remove consumer [{}]", deserializedData, e);
+                        }
+                        return;
                     default:
                         logger.warn("Unhandled event type \"{}\" for replication message id: {}", eventType, message.getJMSMessageID());
                 }
@@ -141,25 +151,14 @@ public class ReplicaBrokerEventListener implements MessageListener {
     private void consumeAck(final MessageAck ack) {
         try {
             ConsumerBrokerExchange consumerBrokerExchange = new ConsumerBrokerExchange();
-            Destination destination = broker.getDestinations(ack.getDestination()).stream()
-                    .findFirst()
-                    .orElseThrow(() -> new IllegalStateException("Destination not found that matches: " + ack.getDestination().getQualifiedName()));
-            consumerBrokerExchange.setRegion(broker);
-            consumerBrokerExchange.setRegionDestination(destination);
             consumerBrokerExchange.setConnectionContext(broker.getAdminConnectionContext());
-            final ConsumerId newOrExistingConsumerId = subscriptionHandler.createSubscriptionIfAbsent(
-                    ack.getConsumerId(),
-                    ack.getDestination()
-            );
-            ack.setConsumerId(newOrExistingConsumerId);
-            RegionBroker regionBroker = (RegionBroker) broker.getAdaptor(RegionBroker.class);
-            Region region = regionBroker.getRegion(destination.getActiveMQDestination());
-            region.acknowledge(consumerBrokerExchange, ack);
+            broker.acknowledge(consumerBrokerExchange, ack);
         } catch (Exception e) {
             logger.error("Failed to process ack with last message id: {}", ack.getLastMessageId(), e);
         }
     }
 
+    // TODO get rid of the method
     private void removeMessage(final MessageAck messageAck) {
         for (Destination destination : broker.getDestinations(messageAck.getDestination())) {
             try {
@@ -271,6 +270,27 @@ public class ReplicaBrokerEventListener implements MessageListener {
             broker.commitTransaction(broker.getAdminConnectionContext(), xid, onePhase);
         } catch (Exception e) {
             logger.error("Unable to replicate commit transaction [{}]", xid, e);
+        }
+    }
+
+    private void addConsumer(ConsumerInfo consumerInfo, String clientId) {
+        try {
+            ConnectionContext context = broker.getAdminConnectionContext().copy();
+            context.setClientId(clientId);
+            context.setConnection(new DummyConnection());
+            broker.addConsumer(context, consumerInfo);
+        } catch (Exception e) {
+            logger.error("Unable to replicate add consumer [{}]", consumerInfo, e);
+        }
+    }
+
+    private void removeConsumer(ConsumerInfo consumerInfo, String clientId) {
+        try {
+            ConnectionContext context = broker.getAdminConnectionContext().copy();
+            context.setClientId(clientId);
+            broker.removeConsumer(context, consumerInfo);
+        } catch (Exception e) {
+            logger.error("Unable to replicate remove consumer [{}]", consumerInfo, e);
         }
     }
 
