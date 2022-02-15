@@ -276,12 +276,11 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
             return;
         }
         try {
-            MessageAck ackToReplicate = createAckFromReference(reference, null);
             enqueueReplicaEvent(
                 context,
                 new ReplicaEvent()
-                    .setEventType(ReplicaEventType.MESSAGE_EXPIRED)
-                    .setEventData(eventSerializer.serializeReplicationData(ackToReplicate))
+                        .setEventType(ReplicaEventType.MESSAGE_EXPIRED)
+                        .setEventData(eventSerializer.serializeReplicationData(message))
             );
         } catch (Exception e) {
             logger.error("Failed to replicate discard of {}", reference.getMessageId(), e);

@@ -512,6 +512,31 @@ public class ReplicaSourceBrokerTest {
         verifyConnectionContext(connectionContext);
     }
 
+    @Test
+    public void replicates_MESSAGE_EXPIRED() throws Exception {
+        source.start();
+
+        MessageId messageId = new MessageId("1:1");
+        ActiveMQMessage message = new ActiveMQMessage();
+        message.setMessageId(messageId);
+        message.setDestination(testDestination);
+
+        source.messageExpired(connectionContext, new IndirectMessageReference(message), null);
+
+        ArgumentCaptor<ActiveMQMessage> messageArgumentCaptor = ArgumentCaptor.forClass(ActiveMQMessage.class);
+        verify(broker).send(any(), messageArgumentCaptor.capture());
+        ActiveMQMessage replicaMessage = messageArgumentCaptor.getValue();
+
+        assertThat(replicaMessage.getType()).isEqualTo("ReplicaEvent");
+        assertThat(replicaMessage.getDestination().getPhysicalName()).isEqualTo(ReplicaSupport.REPLICATION_QUEUE_NAME);
+        assertThat(replicaMessage.getProperty(ReplicaEventType.EVENT_TYPE_PROPERTY)).isEqualTo(ReplicaEventType.MESSAGE_EXPIRED.name());
+
+        final ActiveMQMessage ackMessage = (ActiveMQMessage) eventSerializer.deserializeMessageData(replicaMessage.getContent());
+        assertThat(ackMessage.getMessageId()).isEqualTo(messageId);
+        assertThat(ackMessage.getDestination()).isEqualTo(testDestination);
+        verifyConnectionContext(connectionContext);
+    }
+
     private void verifyConnectionContext(ConnectionContext context) {
         verify(context).isProducerFlowControl();
         verify(context).setProducerFlowControl(false);

@@ -4,6 +4,7 @@ import org.apache.activemq.broker.Broker;
 import org.apache.activemq.broker.ConnectionContext;
 import org.apache.activemq.broker.ConsumerBrokerExchange;
 import org.apache.activemq.broker.region.Destination;
+import org.apache.activemq.broker.region.MessageReference;
 import org.apache.activemq.broker.region.Queue;
 import org.apache.activemq.broker.region.Region;
 import org.apache.activemq.broker.region.RegionBroker;
@@ -21,12 +22,10 @@ import org.junit.Ignore;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 
-import java.util.Collections;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
@@ -343,10 +342,9 @@ public class ReplicaBrokerEventListenerTest {
         ActiveMQMessage message = new ActiveMQMessage();
         message.setMessageId(messageId);
         message.setDestination(testQueue);
-        final MessageAck ack = new MessageAck(message, MessageAck.INDIVIDUAL_ACK_TYPE, 1);
         ReplicaEvent event = new ReplicaEvent()
             .setEventType(ReplicaEventType.MESSAGE_EXPIRED)
-            .setEventData(eventSerializer.serializeReplicationData(ack));
+            .setEventData(eventSerializer.serializeReplicationData(message));
         ActiveMQMessage replicaEventMessage = spy(new ActiveMQMessage());
         replicaEventMessage.setType("ReplicaEvent");
         replicaEventMessage.setStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY, event.getEventType().name());
@@ -354,7 +352,12 @@ public class ReplicaBrokerEventListenerTest {
 
         listener.onMessage(replicaEventMessage);
 
-        verify((Queue) destinationQueue, times(1)).removeMessage(messageId.toString());
+        ArgumentCaptor<MessageReference> messageArgumentCaptor = ArgumentCaptor.forClass(MessageReference.class);
+        verify(broker).messageExpired(any(), messageArgumentCaptor.capture(), any());
+
+        MessageReference value = messageArgumentCaptor.getValue();
+        assertThat(value.getMessageId()).isEqualTo(messageId);
+        assertThat(value.getRegionDestination()).isEqualTo(destinationQueue);
 
         verify(replicaEventMessage).acknowledge();
     }

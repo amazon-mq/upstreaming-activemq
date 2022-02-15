@@ -58,6 +58,9 @@ public class ReplicaBrokerEventListener implements MessageListener {
                         consumeAck((MessageAck) deserializedData);
                         return;
                     case MESSAGE_EXPIRED:
+                        logger.trace("Processing replicated message expired");
+                        messageExpired((ActiveMQMessage) deserializedData);
+                        return;
                     case MESSAGE_DISCARDED:
                     case MESSAGE_DROPPED:
                         logger.trace("Processing replicated message removal due to {}", eventType);
@@ -155,6 +158,16 @@ public class ReplicaBrokerEventListener implements MessageListener {
             broker.acknowledge(consumerBrokerExchange, ack);
         } catch (Exception e) {
             logger.error("Failed to process ack with last message id: {}", ack.getLastMessageId(), e);
+        }
+    }
+
+    private void messageExpired(final ActiveMQMessage message) {
+        try {
+            final Destination destination = broker.getDestinations(message.getDestination()).stream().findFirst().orElseThrow();
+            message.setRegionDestination(destination);
+            broker.messageExpired(broker.getAdminConnectionContext(), message, null);
+        } catch (Exception e) {
+            logger.error("Unable to replicate message expired [{}]", message.getMessageId(), e);
         }
     }
 
