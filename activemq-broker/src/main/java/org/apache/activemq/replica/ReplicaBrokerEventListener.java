@@ -61,10 +61,9 @@ public class ReplicaBrokerEventListener implements MessageListener {
                         logger.trace("Processing replicated message expired");
                         messageExpired((ActiveMQMessage) deserializedData);
                         return;
-                    case MESSAGE_DISCARDED:
                     case MESSAGE_DROPPED:
                         logger.trace("Processing replicated message removal due to {}", eventType);
-                        removeMessage((MessageAck) deserializedData);
+                        dropMessage((ActiveMQMessage) deserializedData);
                         return;
                     case DESTINATION_UPSERT:
                         logger.trace("Processing replicated destination");
@@ -171,38 +170,13 @@ public class ReplicaBrokerEventListener implements MessageListener {
         }
     }
 
-    // TODO get rid of the method
-    private void removeMessage(final MessageAck messageAck) {
-        for (Destination destination : broker.getDestinations(messageAck.getDestination())) {
-            try {
-                if (destination instanceof Queue) {
-                    ((Queue) destination).removeMessage(messageAck.getLastMessageId().toString());
-                } else if (destination instanceof Topic) {
-                    handleRemoveForTopic((Topic) destination, messageAck);
-                } else {
-                    logger.error("Unhandled destination type {} for ack {}", destination.getClass(), messageAck);
-                }
-            } catch (Exception e) {
-                logger.error("Failed to process removal for message ack {}", messageAck);
-            }
-        }
-    }
-
-    private void handleRemoveForTopic(final Topic topic, final MessageAck messageAck) throws IOException {
-        Optional<Subscription> subscriptionForWhichThisAckIsReplicated = Optional.ofNullable(broker.getAdaptor(AbstractRegion.class))
-                .map(AbstractRegion.class::cast)
-                .map(AbstractRegion::getSubscriptions)
-                .map(subscriptions -> subscriptions.get(messageAck.getConsumerId()))
-                .filter(DurableTopicSubscription.class::isInstance);
-
-        if (subscriptionForWhichThisAckIsReplicated.isPresent()) {
-            org.apache.activemq.command.Message message = topic.loadMessage(messageAck.getFirstMessageId()); // TODO: think about efficiency of this and if we can just ack without a full message retrieval
-            topic.acknowledge(
-                    broker.getAdminConnectionContext(),
-                    subscriptionForWhichThisAckIsReplicated.get(),
-                    messageAck,
-                    new IndirectMessageReference(message)
-            );
+    private void dropMessage(final ActiveMQMessage message) {
+        try {
+            final Queue queue = broker.getDestinations(message.getDestination()).stream()
+                    .findFirst().map(QueueExtractor::extractQueue).orElseThrow();
+            queue.removeMessage(message.getMessageId().toString());
+        } catch (Exception e) {
+            logger.error("Unable to replicate message expired [{}]", message.getMessageId(), e);
         }
     }
 

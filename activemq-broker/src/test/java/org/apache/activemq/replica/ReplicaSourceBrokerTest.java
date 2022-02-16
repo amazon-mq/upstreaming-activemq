@@ -133,7 +133,7 @@ public class ReplicaSourceBrokerTest {
     public void letsCreateConsumerForReplicaQueueFromReplicaConnection() throws Exception {
         source.start();
 
-        when(transportConnector.getName()).thenReturn("test" + ReplicaSourceBroker.REPLICATION_CONNECTOR_NAME_SUFFIX);
+        when(transportConnector.getName()).thenReturn(ReplicaSourceBroker.REPLICATION_CONNECTOR_NAME);
 
         ConsumerInfo consumerInfo = new ConsumerInfo();
         consumerInfo.setDestination(source.queueProvider.get());
@@ -157,7 +157,7 @@ public class ReplicaSourceBrokerTest {
     public void letsCreateConsumerForNonReplicaAdvisoryTopicFromReplicaConnection() throws Exception {
         source.start();
 
-        when(transportConnector.getName()).thenReturn("test" + ReplicaSourceBroker.REPLICATION_CONNECTOR_NAME_SUFFIX);
+        when(transportConnector.getName()).thenReturn(ReplicaSourceBroker.REPLICATION_CONNECTOR_NAME);
 
         ActiveMQTopic advisoryTopic = new ActiveMQTopic(AdvisorySupport.ADVISORY_TOPIC_PREFIX + "TEST");
         ConsumerInfo consumerInfo = new ConsumerInfo();
@@ -184,7 +184,7 @@ public class ReplicaSourceBrokerTest {
     public void doesNoLetCreateConsumerForNonReplicaQueueFromReplicaConnection() throws Exception {
         source.start();
 
-        when(transportConnector.getName()).thenReturn("test" + ReplicaSourceBroker.REPLICATION_CONNECTOR_NAME_SUFFIX);
+        when(transportConnector.getName()).thenReturn(ReplicaSourceBroker.REPLICATION_CONNECTOR_NAME);
 
         ConsumerInfo consumerInfo = new ConsumerInfo();
         consumerInfo.setDestination(testDestination);
@@ -250,7 +250,7 @@ public class ReplicaSourceBrokerTest {
     public void doesNotLetCreateProducerForReplicaQueueFromReplicaConnection() throws Exception {
         source.start();
 
-        when(transportConnector.getName()).thenReturn("test" + ReplicaSourceBroker.REPLICATION_CONNECTOR_NAME_SUFFIX);
+        when(transportConnector.getName()).thenReturn(ReplicaSourceBroker.REPLICATION_CONNECTOR_NAME);
 
         ProducerInfo producerInfo = new ProducerInfo();
         producerInfo.setDestination(source.queueProvider.get());
@@ -274,7 +274,7 @@ public class ReplicaSourceBrokerTest {
     public void doesNotLetCreateProducerForNonReplicaQueueFromReplicaConnection() throws Exception {
         source.start();
 
-        when(transportConnector.getName()).thenReturn("test" + ReplicaSourceBroker.REPLICATION_CONNECTOR_NAME_SUFFIX);
+        when(transportConnector.getName()).thenReturn(ReplicaSourceBroker.REPLICATION_CONNECTOR_NAME);
 
         ProducerInfo producerInfo = new ProducerInfo();
         producerInfo.setDestination(testDestination);
@@ -506,9 +506,9 @@ public class ReplicaSourceBrokerTest {
         assertThat(replicaMessage.getDestination().getPhysicalName()).isEqualTo(ReplicaSupport.REPLICATION_QUEUE_NAME);
         assertThat(replicaMessage.getProperty(ReplicaEventType.EVENT_TYPE_PROPERTY)).isEqualTo(ReplicaEventType.MESSAGE_DROPPED.name());
 
-        final MessageAck ackMessage = (MessageAck) eventSerializer.deserializeMessageData(replicaMessage.getContent());
-        assertThat(ackMessage.getLastMessageId()).isEqualTo(messageId);
-        assertThat(ackMessage.getDestination()).isEqualTo(testDestination);
+        final ActiveMQMessage sentMessage = (ActiveMQMessage) eventSerializer.deserializeMessageData(replicaMessage.getContent());
+        assertThat(sentMessage.getMessageId()).isEqualTo(messageId);
+        assertThat(sentMessage.getDestination()).isEqualTo(testDestination);
         verifyConnectionContext(connectionContext);
     }
 
@@ -531,9 +531,9 @@ public class ReplicaSourceBrokerTest {
         assertThat(replicaMessage.getDestination().getPhysicalName()).isEqualTo(ReplicaSupport.REPLICATION_QUEUE_NAME);
         assertThat(replicaMessage.getProperty(ReplicaEventType.EVENT_TYPE_PROPERTY)).isEqualTo(ReplicaEventType.MESSAGE_EXPIRED.name());
 
-        final ActiveMQMessage ackMessage = (ActiveMQMessage) eventSerializer.deserializeMessageData(replicaMessage.getContent());
-        assertThat(ackMessage.getMessageId()).isEqualTo(messageId);
-        assertThat(ackMessage.getDestination()).isEqualTo(testDestination);
+        final ActiveMQMessage sentMessage = (ActiveMQMessage) eventSerializer.deserializeMessageData(replicaMessage.getContent());
+        assertThat(sentMessage.getMessageId()).isEqualTo(messageId);
+        assertThat(sentMessage.getDestination()).isEqualTo(testDestination);
         verifyConnectionContext(connectionContext);
     }
 

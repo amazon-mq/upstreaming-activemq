@@ -183,37 +183,14 @@ public class ReplicaBrokerEventListenerTest {
     }
 
     @Test
-    public void canHandleEventOfType_MESSAGE_DISCARDED() throws Exception {
-        MessageId messageId = new MessageId("1:1:1:1");
-        ActiveMQMessage message = new ActiveMQMessage();
-        message.setMessageId(messageId);
-        message.setDestination(testQueue);
-        final MessageAck ack = new MessageAck(message, MessageAck.INDIVIDUAL_ACK_TYPE, 1);
-        ReplicaEvent event = new ReplicaEvent()
-            .setEventType(ReplicaEventType.MESSAGE_DISCARDED)
-            .setEventData(eventSerializer.serializeReplicationData(ack));
-        ActiveMQMessage replicaEventMessage = spy(new ActiveMQMessage());
-        replicaEventMessage.setType("ReplicaEvent");
-        replicaEventMessage.setStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY, event.getEventType().name());
-        replicaEventMessage.setContent(event.getEventData());
-
-        listener.onMessage(replicaEventMessage);
-
-        verify((Queue) destinationQueue, times(1)).removeMessage(messageId.toString());
-
-        verify(replicaEventMessage).acknowledge();
-    }
-
-    @Test
     public void canHandleEventOfType_MESSAGE_DROPPED() throws Exception {
         MessageId messageId = new MessageId("1:1:1:1");
         ActiveMQMessage message = new ActiveMQMessage();
         message.setMessageId(messageId);
         message.setDestination(testQueue);
-        final MessageAck ack = new MessageAck(message, MessageAck.INDIVIDUAL_ACK_TYPE, 1);
         ReplicaEvent event = new ReplicaEvent()
                 .setEventType(ReplicaEventType.MESSAGE_DROPPED)
-                .setEventData(eventSerializer.serializeReplicationData(ack));
+                .setEventData(eventSerializer.serializeReplicationData(message));
         ActiveMQMessage replicaEventMessage = spy(new ActiveMQMessage());
         replicaEventMessage.setType("ReplicaEvent");
         replicaEventMessage.setStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY, event.getEventType().name());

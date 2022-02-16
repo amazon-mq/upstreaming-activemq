@@ -19,7 +19,6 @@ import org.apache.activemq.broker.region.virtual.VirtualDestination;
 import org.apache.activemq.command.ActiveMQDestination;
 import org.apache.activemq.command.ActiveMQMessage;
 import org.apache.activemq.command.BrokerInfo;
-import org.apache.activemq.command.ConsumerId;
 import org.apache.activemq.command.ConsumerInfo;
 import org.apache.activemq.command.DestinationInfo;
 import org.apache.activemq.command.Message;
@@ -50,7 +49,7 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
 
     private static final Logger logger = LoggerFactory.getLogger(ReplicaSourceBroker.class);
     private static final DestinationMapEntry<Boolean> IS_REPLICATED = new DestinationMapEntry<>() {}; // used in destination map to indicate mirrored status
-    static final String REPLICATION_CONNECTOR_NAME_SUFFIX = "_replication";
+    static final String REPLICATION_CONNECTOR_NAME = "replication";
 
     final DestinationMap destinationsToReplicate = new DestinationMap();
 
@@ -71,7 +70,7 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
     @Override
     public void start() throws Exception {
         TransportConnector transportConnector = next.getBrokerService().addConnector(transportConnectorUri);
-        transportConnector.setName(transportConnector.getName() + REPLICATION_CONNECTOR_NAME_SUFFIX);
+        transportConnector.setName(REPLICATION_CONNECTOR_NAME);
 
         queueProvider.initialize();
         logger.info("Replica plugin initialized with queue {}", queueProvider.get());
@@ -252,24 +251,6 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
         }
     }
 
-    private void replicateMessageDiscarded(ConnectionContext context, MessageReference reference) {
-        Message message = reference.getMessage();
-        if (!isReplicatedDestination(message.getDestination())) {
-            return;
-        }
-        try {
-            MessageAck ackToReplicate = createAckFromReference(reference, null);
-            enqueueReplicaEvent(
-                context,
-                new ReplicaEvent()
-                    .setEventType(ReplicaEventType.MESSAGE_DISCARDED)
-                    .setEventData(eventSerializer.serializeReplicationData(ackToReplicate))
-            );
-        } catch (Exception e) {
-            logger.error("Failed to replicate discard of {}", reference.getMessageId(), e);
-        }
-    }
-
     private void replicateMessageExpired(ConnectionContext context, MessageReference reference) {
         Message message = reference.getMessage();
         if (!isReplicatedDestination(message.getDestination())) {
@@ -285,12 +266,6 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
         } catch (Exception e) {
             logger.error("Failed to replicate discard of {}", reference.getMessageId(), e);
         }
-    }
-
-    private MessageAck createAckFromReference(MessageReference reference, ConsumerId consumerId) {
-        MessageAck ack = new MessageAck(reference.getMessage(), MessageAck.INDIVIDUAL_ACK_TYPE, 1);
-        ack.setConsumerId(consumerId);
-        return ack;
     }
 
     @Override
@@ -391,7 +366,7 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
     }
 
     private boolean isReplicationTransport(Connector connector) {
-        return connector instanceof TransportConnector && ((TransportConnector) connector).getName().endsWith(REPLICATION_CONNECTOR_NAME_SUFFIX);
+        return connector instanceof TransportConnector && ((TransportConnector) connector).getName().equals(REPLICATION_CONNECTOR_NAME);
     }
 
     protected void assertAuthorized(ConnectionContext context, ActiveMQDestination destination, boolean consumer) {
@@ -479,8 +454,11 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
         Destination newDestination = super.addDestination(context, destination, createIfTemporary);
         if (shouldReplicateDestination(destination)) {
             replicateDestinationCreation(context, destination);
-            if (newDestination instanceof Queue && !((Queue) newDestination).getListeners().contains(this)) {
-                ((Queue) newDestination).addListener(this);
+            if (destination.isQueue()) {
+                Queue queue = QueueExtractor.extractQueue(newDestination);
+                if (queue != null && !queue.getListeners().contains(this)) {
+                    queue.addListener(this);
+                }
             }
         }
         return newDestination;
@@ -550,12 +528,6 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
     }
 
     @Override
-    public void messageDiscarded(ConnectionContext context, Subscription sub, MessageReference messageReference) {
-        super.messageDiscarded(context, sub, messageReference);
-        replicateMessageDiscarded(context, messageReference);
-    }
-
-    @Override
     public void virtualDestinationAdded(ConnectionContext context, VirtualDestination virtualDestination) {
         super.virtualDestinationAdded(context, virtualDestination);
     }
@@ -572,12 +544,11 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
             return;
         }
         try {
-            MessageAck ackToReplicate = createAckFromReference(reference, null);
             enqueueReplicaEvent(
                     getAdminConnectionContext(),
                     new ReplicaEvent()
                             .setEventType(ReplicaEventType.MESSAGE_DROPPED)
-                            .setEventData(eventSerializer.serializeReplicationData(ackToReplicate))
+                            .setEventData(eventSerializer.serializeReplicationData(reference.getMessage()))
             );
         } catch (Exception e) {
             logger.error("Failed to replicate drop message {}", reference.getMessageId(), e);
