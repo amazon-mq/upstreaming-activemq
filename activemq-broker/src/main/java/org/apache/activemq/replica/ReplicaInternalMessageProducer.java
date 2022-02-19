@@ -14,10 +14,6 @@ public class ReplicaInternalMessageProducer {
     private final Broker broker;
     private final ConnectionContext connectionContext;
 
-    ReplicaInternalMessageProducer(final Broker broker) {
-        this(requireNonNull(broker), broker.getAdminConnectionContext());
-    }
-
     ReplicaInternalMessageProducer(final Broker broker, final ConnectionContext connectionContext) {
         this.broker = requireNonNull(broker);
         this.connectionContext = requireNonNull(connectionContext);

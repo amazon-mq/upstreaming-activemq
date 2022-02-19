@@ -3,13 +3,8 @@ package org.apache.activemq.replica;
 import org.apache.activemq.broker.Broker;
 import org.apache.activemq.broker.ConnectionContext;
 import org.apache.activemq.broker.ConsumerBrokerExchange;
-import org.apache.activemq.broker.region.AbstractRegion;
 import org.apache.activemq.broker.region.Destination;
-import org.apache.activemq.broker.region.DurableTopicSubscription;
-import org.apache.activemq.broker.region.IndirectMessageReference;
 import org.apache.activemq.broker.region.Queue;
-import org.apache.activemq.broker.region.Subscription;
-import org.apache.activemq.broker.region.Topic;
 import org.apache.activemq.command.ActiveMQDestination;
 import org.apache.activemq.command.ActiveMQMessage;
 import org.apache.activemq.command.ConsumerInfo;
@@ -34,9 +29,14 @@ public class ReplicaBrokerEventListener implements MessageListener {
     private final Logger logger = LoggerFactory.getLogger(ReplicaBrokerEventListener.class);
     private final ReplicaEventSerializer eventSerializer = new ReplicaEventSerializer();
     private final Broker broker;
+    private final ConnectionContext connectionContext;
+    private final ReplicaInternalMessageProducer replicaInternalMessageProducer;
 
     ReplicaBrokerEventListener(final Broker broker) {
         this.broker = requireNonNull(broker);
+        connectionContext = broker.getAdminConnectionContext().copy();
+        connectionContext.setUserName(ReplicaSupport.REPLICATION_PLUGIN_USER_NAME);
+        replicaInternalMessageProducer = new ReplicaInternalMessageProducer(broker, connectionContext);
     }
 
     @Override
@@ -144,7 +144,7 @@ public class ReplicaBrokerEventListener implements MessageListener {
 
     private void persistMessage(final ActiveMQMessage message) {
         try {
-            new ReplicaInternalMessageProducer(broker).produceToReplicaQueue(message);
+            replicaInternalMessageProducer.produceToReplicaQueue(message);
         } catch (Exception e) {
             logger.error("Failed to process message {} with JMS message id: {}", message.getMessageId(), message.getJMSMessageID(), e);
         }
@@ -153,7 +153,7 @@ public class ReplicaBrokerEventListener implements MessageListener {
     private void consumeAck(final MessageAck ack) {
         try {
             ConsumerBrokerExchange consumerBrokerExchange = new ConsumerBrokerExchange();
-            consumerBrokerExchange.setConnectionContext(broker.getAdminConnectionContext());
+            consumerBrokerExchange.setConnectionContext(connectionContext);
             broker.acknowledge(consumerBrokerExchange, ack);
         } catch (Exception e) {
             logger.error("Failed to process ack with last message id: {}", ack.getLastMessageId(), e);
@@ -164,7 +164,7 @@ public class ReplicaBrokerEventListener implements MessageListener {
         try {
             final Destination destination = broker.getDestinations(message.getDestination()).stream().findFirst().orElseThrow();
             message.setRegionDestination(destination);
-            broker.messageExpired(broker.getAdminConnectionContext(), message, null);
+            broker.messageExpired(connectionContext, message, null);
         } catch (Exception e) {
             logger.error("Unable to replicate message expired [{}]", message.getMessageId(), e);
         }
@@ -192,7 +192,7 @@ public class ReplicaBrokerEventListener implements MessageListener {
             logger.error("Unable to determine if [{}] is an existing destination", destination, e);
         }
         try {
-            broker.addDestination(broker.getAdminConnectionContext(), destination, true);
+            broker.addDestination(connectionContext, destination, true);
         } catch (Exception e) {
             logger.error("Unable to add destination [{}]", destination, e);
         }
@@ -210,7 +210,7 @@ public class ReplicaBrokerEventListener implements MessageListener {
             logger.error("Unable to determine if [{}] is an existing destination", destination, e);
         }
         try {
-            broker.removeDestination(broker.getAdminConnectionContext(), destination, 1000);
+            broker.removeDestination(connectionContext, destination, 1000);
         } catch (Exception e) {
             logger.error("Unable to remove destination [{}]", destination, e);
         }
@@ -219,7 +219,7 @@ public class ReplicaBrokerEventListener implements MessageListener {
     private void beginTransaction(TransactionId xid) {
         try {
             createTransactionMapIfNotExist();
-            broker.beginTransaction(broker.getAdminConnectionContext(), xid);
+            broker.beginTransaction(connectionContext, xid);
         } catch (Exception e) {
             logger.error("Unable to replicate begin transaction [{}]", xid, e);
         }
@@ -228,7 +228,7 @@ public class ReplicaBrokerEventListener implements MessageListener {
     private void prepareTransaction(TransactionId xid) {
         try {
             createTransactionMapIfNotExist();
-            broker.prepareTransaction(broker.getAdminConnectionContext(), xid);
+            broker.prepareTransaction(connectionContext, xid);
         } catch (Exception e) {
             logger.error("Unable to replicate prepare transaction [{}]", xid, e);
         }
@@ -237,7 +237,7 @@ public class ReplicaBrokerEventListener implements MessageListener {
     private void forgetTransaction(TransactionId xid) {
         try {
             createTransactionMapIfNotExist();
-            broker.forgetTransaction(broker.getAdminConnectionContext(), xid);
+            broker.forgetTransaction(connectionContext, xid);
         } catch (Exception e) {
             logger.error("Unable to replicate forget transaction [{}]", xid, e);
         }
@@ -246,7 +246,7 @@ public class ReplicaBrokerEventListener implements MessageListener {
     private void rollbackTransaction(TransactionId xid) {
         try {
             createTransactionMapIfNotExist();
-            broker.rollbackTransaction(broker.getAdminConnectionContext(), xid);
+            broker.rollbackTransaction(connectionContext, xid);
         } catch (Exception e) {
             logger.error("Unable to replicate rollback transaction [{}]", xid, e);
         }
@@ -254,7 +254,7 @@ public class ReplicaBrokerEventListener implements MessageListener {
 
     private void commitTransaction(TransactionId xid, boolean onePhase) {
         try {
-            broker.commitTransaction(broker.getAdminConnectionContext(), xid, onePhase);
+            broker.commitTransaction(connectionContext, xid, onePhase);
         } catch (Exception e) {
             logger.error("Unable to replicate commit transaction [{}]", xid, e);
         }
@@ -262,7 +262,7 @@ public class ReplicaBrokerEventListener implements MessageListener {
 
     private void addConsumer(ConsumerInfo consumerInfo, String clientId) {
         try {
-            ConnectionContext context = broker.getAdminConnectionContext().copy();
+            ConnectionContext context = connectionContext.copy();
             context.setClientId(clientId);
             context.setConnection(new DummyConnection());
             broker.addConsumer(context, consumerInfo);
@@ -273,7 +273,7 @@ public class ReplicaBrokerEventListener implements MessageListener {
 
     private void removeConsumer(ConsumerInfo consumerInfo, String clientId) {
         try {
-            ConnectionContext context = broker.getAdminConnectionContext().copy();
+            ConnectionContext context = connectionContext.copy();
             context.setClientId(clientId);
             broker.removeConsumer(context, consumerInfo);
         } catch (Exception e) {
@@ -282,8 +282,8 @@ public class ReplicaBrokerEventListener implements MessageListener {
     }
 
     private void createTransactionMapIfNotExist() {
-        if (broker.getAdminConnectionContext().getTransactions() == null) {
-            broker.getAdminConnectionContext().setTransactions(new ConcurrentHashMap<>());
+        if (connectionContext.getTransactions() == null) {
+            connectionContext.setTransactions(new ConcurrentHashMap<>());
         }
     }
 

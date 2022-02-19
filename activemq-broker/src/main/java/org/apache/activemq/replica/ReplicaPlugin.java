@@ -30,9 +30,16 @@ public class ReplicaPlugin extends BrokerPluginSupport {
     @Override
     public Broker installPlugin(final Broker broker) {
         logger.info("{} installed, running as {}", ReplicaPlugin.class.getName(), role);
-        return role == ReplicaRole.replica
-            ? new ReplicaBroker(broker, otherBrokerConnectionFactory)
-            : new ReplicaSourceBroker(broker, transportConnectorUri);
+        switch (role) {
+            case replica:
+                return new ReplicaBroker(broker, otherBrokerConnectionFactory);
+            case source:
+                return new ReplicaSourceBroker(broker, transportConnectorUri);
+            case dual:
+                return new ReplicaSourceBroker(new ReplicaBroker(broker, otherBrokerConnectionFactory), transportConnectorUri);
+            default:
+                throw new IllegalArgumentException("Unknown replica role:" + role);
+        }
     }
 
     public ReplicaPlugin setRole(ReplicaRole role) {

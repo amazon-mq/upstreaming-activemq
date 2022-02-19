@@ -59,6 +59,7 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
     private final ReplicaEventSerializer eventSerializer = new ReplicaEventSerializer();
     final ReplicaReplicationQueueSupplier queueProvider;
     private final URI transportConnectorUri;
+    private ReplicaInternalMessageProducer replicaInternalMessageProducer;
 
     public ReplicaSourceBroker(Broker next, URI transportConnectorUri) {
         super(next);
@@ -74,6 +75,8 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
 
         queueProvider.initialize();
         logger.info("Replica plugin initialized with queue {}", queueProvider.get());
+
+        replicaInternalMessageProducer = new ReplicaInternalMessageProducer(next, getAdminConnectionContext());
 
         super.start();
 
@@ -108,7 +111,7 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
         return ReplicaSupport.REPLICATION_QUEUE_NAME.equals(destination.getPhysicalName());
     }
 
-    public boolean isReplicatedDestination(ActiveMQDestination destination) {
+    private boolean isReplicatedDestination(ActiveMQDestination destination) {
         if (destinationsToReplicate.chooseValue(destination) == null) {
             logger.debug("{} is not a replicated destination", destination.getPhysicalName());
             return false;
@@ -118,7 +121,11 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
         //        return destinations.stream().noneMatch(d -> d.getPhysicalName().equals(destination.getActiveMQDestination().getPhysicalName()))
     }
 
-    private void enqueueReplicaEvent(ConnectionContext context, ReplicaEvent event) throws Exception {
+    private void enqueueReplicaEvent(ConnectionContext initialContext, ReplicaEvent event) throws Exception {
+        if (isReplicaContext(initialContext)) {
+            return;
+        }
+
         logger.debug("Replicating {} event", event.getEventType());
         logger.error("Replicating {} event: data:\n{}", event.getEventType(), new Object() {
             @Override
@@ -140,7 +147,11 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
         eventMessage.setResponseRequired(false);
         eventMessage.setContent(event.getEventData());
         eventMessage.setProperties(event.getReplicationProperties());
-        new ReplicaInternalMessageProducer(next, context).produceToReplicaQueue(eventMessage);
+        replicaInternalMessageProducer.produceToReplicaQueue(eventMessage);
+    }
+
+    private boolean isReplicaContext(ConnectionContext initialContext) {
+        return initialContext != null && ReplicaSupport.REPLICATION_PLUGIN_USER_NAME.equals(initialContext.getUserName());
     }
 
     private void replicateSend(ProducerBrokerExchange context, Message message, ActiveMQDestination destination) {
@@ -235,13 +246,13 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
         }
     }
 
-    private void replicateDestinationRemoval(ActiveMQDestination destination) {
+    private void replicateDestinationRemoval(ConnectionContext context, ActiveMQDestination destination) {
         if (!isReplicatedDestination(destination)) {
             return;
         }
         try {
             enqueueReplicaEvent(
-                getAdminConnectionContext(),
+                context,
                 new ReplicaEvent()
                     .setEventType(ReplicaEventType.DESTINATION_DELETE)
                     .setEventData(eventSerializer.serializeReplicationData(destination))
@@ -467,7 +478,7 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
     @Override
     public void removeDestination(ConnectionContext context, ActiveMQDestination destination, long timeout) throws Exception {
         super.removeDestination(context, destination, timeout);
-        replicateDestinationRemoval(destination);
+        replicateDestinationRemoval(context, destination);
     }
 
     @Override
@@ -539,13 +550,15 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
 
     @Override
     public void onDropMessage(QueueMessageReference reference) {
+        // TODO because there is no ConnectionContext it may trigger the event on both sides.
+        // TODO But when the event gets to the initial source. the message will be already deleted, so we should be fine.
         Message message = reference.getMessage();
         if (!isReplicatedDestination(message.getDestination())) {
             return;
         }
         try {
             enqueueReplicaEvent(
-                    getAdminConnectionContext(),
+                    null,
                     new ReplicaEvent()
                             .setEventType(ReplicaEventType.MESSAGE_DROPPED)
                             .setEventData(eventSerializer.serializeReplicationData(reference.getMessage()))

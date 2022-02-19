@@ -42,17 +42,21 @@ public class ReplicaBrokerEventListenerTest {
     private final Destination destinationQueue = mock(Queue.class);
     private final ConnectionContext connectionContext = mock(ConnectionContext.class);
 
-    private final ReplicaBrokerEventListener listener = new ReplicaBrokerEventListener(broker);
+    private ReplicaBrokerEventListener listener;
     private final ReplicaEventSerializer eventSerializer = new ReplicaEventSerializer();
 
     @Before
     public void setUp() throws Exception {
-        when(broker.getAdminConnectionContext()).thenReturn(connectionContext);
+        ConnectionContext adminConnectionContext = mock(ConnectionContext.class);
+        when(adminConnectionContext.copy()).thenReturn(connectionContext);
+        when(broker.getAdminConnectionContext()).thenReturn(adminConnectionContext);
         when(broker.getDestinations(testQueue)).thenReturn(Set.of(destinationQueue));
         when(connectionContext.isProducerFlowControl()).thenReturn(true);
         when(broker.getAdaptor(RegionBroker.class)).thenReturn(regionBroker);
         when(regionBroker.getRegion(testQueue)).thenReturn(region);
         when(connectionContext.copy()).thenReturn(new ConnectionContext());
+
+        listener = new ReplicaBrokerEventListener(broker);
     }
 
     @Test
