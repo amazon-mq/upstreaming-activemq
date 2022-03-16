@@ -13,7 +13,6 @@ import org.apache.activemq.broker.region.Destination;
 import org.apache.activemq.broker.region.MessageReference;
 import org.apache.activemq.broker.region.Queue;
 import org.apache.activemq.broker.region.QueueListener;
-import org.apache.activemq.broker.region.QueueMessageReference;
 import org.apache.activemq.broker.region.Subscription;
 import org.apache.activemq.broker.region.virtual.VirtualDestination;
 import org.apache.activemq.command.ActiveMQDestination;
@@ -42,8 +41,10 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.URI;
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
 
@@ -549,22 +550,30 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
     }
 
     @Override
-    public void onDropMessage(QueueMessageReference reference) {
-        // TODO because there is no ConnectionContext it may trigger the event on both sides.
-        // TODO But when the event gets to the initial source. the message will be already deleted, so we should be fine.
-        Message message = reference.getMessage();
-        if (!isReplicatedDestination(message.getDestination())) {
+    public void onDropMessage(List<MessageReference> messageReferences) {
+        if (messageReferences.isEmpty()) {
             return;
         }
+
+        ActiveMQDestination destination = messageReferences.get(0).getMessage().getDestination();
+        if (!isReplicatedDestination(destination)) {
+            return;
+        }
+        final List<String> messageIds = messageReferences.stream()
+                .map(MessageReference::getMessageId)
+                .map(MessageId::toString)
+                .collect(Collectors.toList());
+
         try {
             enqueueReplicaEvent(
                     null,
                     new ReplicaEvent()
-                            .setEventType(ReplicaEventType.MESSAGE_DROPPED)
-                            .setEventData(eventSerializer.serializeReplicationData(reference.getMessage()))
+                            .setEventType(ReplicaEventType.MESSAGES_DROPPED)
+                            .setEventData(eventSerializer.serializeReplicationData(destination))
+                            .setReplicationProperty(ReplicaSupport.MESSAGE_IDS_PROPERTY, messageIds)
             );
         } catch (Exception e) {
-            logger.error("Failed to replicate drop message {}", reference.getMessageId(), e);
+            logger.error("Failed to replicate drop messages {}", destination, e);
         }
     }
 }

@@ -1321,6 +1321,7 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
                     } catch (IOException e) {
                     }
                 }
+                fireDropMessage(list);
                 // don't spin/hang if stats are out and there is nothing left in the
                 // store
             } while (!list.isEmpty() && this.destinationStatistics.getMessages().getCount() > 0);
@@ -1330,6 +1331,12 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
             }
         } finally {
             sendLock.unlock();
+        }
+    }
+
+    private void fireDropMessage(List<MessageReference> messageReferences) {
+        for (QueueListener listener : listeners) {
+            listener.onDropMessage(messageReferences);
         }
     }
 
@@ -1907,13 +1914,6 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
             } finally {
                 pagedInMessagesLock.writeLock().unlock();
             }
-        }
-        fireDropMessage(reference);
-    }
-
-    private void fireDropMessage(QueueMessageReference reference) {
-        for (QueueListener listener : listeners) {
-            listener.onDropMessage(reference);
         }
     }
 
