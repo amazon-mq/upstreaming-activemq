@@ -1,6 +1,6 @@
 #!/bin/sh
 
-VERSION=5.17.0-SNAPSHOT
+VERSION=5.18.0-SNAPSHOT
 command=${1:-restart}
 
 set -e
