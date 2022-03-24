@@ -118,8 +118,8 @@ xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.sprin
                     <authorizationEntries>
                         <authorizationEntry topic=">" read="admins" write="admins" admin="admins" />
                         <authorizationEntry queue=">" read="admins" write="admins" admin="admins" />
-                        <authorizationEntry topic="ActiveMQ.Advisory.>" read="guests,replica" write="guests,replica" admin="guests,replica"/>
-                        <authorizationEntry queue="ActiveMQ.Plugin.Replication.Queue" read="replica" />
+                        <authorizationEntry topic="ActiveMQ.Advisory.>" read="guests,replica" write="guests,replica" admin="guests,replica" />
+                        <authorizationEntry queue="ActiveMQ.Plugin.Replication.Queue" read="replica" write="replica" />
                     </authorizationEntries>
                 </authorizationMap>
             </map>
