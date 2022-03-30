@@ -23,7 +23,6 @@ import org.junit.Ignore;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 
-import javax.jms.MessageProducer;
 import java.util.Collections;
 import java.util.Set;
 
@@ -45,7 +44,6 @@ public class ReplicaBrokerEventListenerTest {
     private final ActiveMQQueue testQueue = new ActiveMQQueue("TEST.QUEUE");
     private final Destination destinationQueue = mock(Queue.class);
     private final ConnectionContext connectionContext = mock(ConnectionContext.class);
-    private final MessageProducer producer = mock(MessageProducer.class);
 
     private ReplicaBrokerEventListener listener;
     private final ReplicaEventSerializer eventSerializer = new ReplicaEventSerializer();
@@ -61,7 +59,7 @@ public class ReplicaBrokerEventListenerTest {
         when(regionBroker.getRegion(testQueue)).thenReturn(region);
         when(connectionContext.copy()).thenReturn(new ConnectionContext());
 
-        listener = new ReplicaBrokerEventListener(broker, producer);
+        listener = new ReplicaBrokerEventListener(broker);
     }
 
     @Test
@@ -167,7 +165,6 @@ public class ReplicaBrokerEventListenerTest {
         verify(replicaEventMessage).acknowledge();
     }
 
-    @Ignore
     @Test
     public void canHandleEventOfType_MESSAGE_ACK() throws Exception {
         MessageId messageId = new MessageId("1:1:1:1");

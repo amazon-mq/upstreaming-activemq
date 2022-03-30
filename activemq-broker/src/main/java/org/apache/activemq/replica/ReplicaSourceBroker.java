@@ -156,9 +156,6 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
     }
 
     private void replicateSend(ProducerBrokerExchange context, Message message, ActiveMQDestination destination) {
-        if (isReplicationQueue(message.getDestination())) {
-            return;
-        }
         if (message.isAdvisory()) {  // TODO: only replicate what we care about
             return;
         }
@@ -322,7 +319,7 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
 
     @Override
     public Subscription addConsumer(ConnectionContext context, ConsumerInfo consumerInfo) throws Exception {
-        assertAuthorized(context, consumerInfo.getDestination());
+        assertAuthorized(context,  consumerInfo.getDestination(), true);
 
         Subscription subscription = super.addConsumer(context, consumerInfo);
         replicateAddConsumer(context, consumerInfo);
@@ -375,7 +372,7 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
         // operation must specify a destination.  Because of this, we only authorize 'addProducer' if a destination is
         // specified. If not specified, the authz check in the 'send' method below will ensure authorization.
         if (producerInfo.getDestination() != null) {
-            assertAuthorized(context, producerInfo.getDestination());
+            assertAuthorized(context, producerInfo.getDestination(), false);
         }
         super.addProducer(context, producerInfo);
     }
@@ -384,14 +381,14 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
         return connector instanceof TransportConnector && ((TransportConnector) connector).getName().equals(REPLICATION_CONNECTOR_NAME);
     }
 
-    protected void assertAuthorized(ConnectionContext context, ActiveMQDestination destination) {
+    protected void assertAuthorized(ConnectionContext context, ActiveMQDestination destination, boolean consumer) {
         boolean replicationQueue = isReplicationQueue(destination);
         boolean replicationTransport = isReplicationTransport(context.getConnector());
 
         if (isSystemBroker(context)) {
             return;
         }
-        if (replicationTransport && (replicationQueue || isAdvisoryDestination(destination))) {
+        if (replicationTransport && consumer && (replicationQueue || isAdvisoryDestination(destination))) {
             return;
         }
         if (!replicationTransport && !replicationQueue) {

@@ -19,7 +19,6 @@ import org.slf4j.LoggerFactory;
 import javax.jms.JMSException;
 import javax.jms.Message;
 import javax.jms.MessageListener;
-import javax.jms.MessageProducer;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -27,7 +26,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 import static java.util.Objects.requireNonNull;
 
@@ -37,13 +35,11 @@ public class ReplicaBrokerEventListener implements MessageListener {
     private final ReplicaEventSerializer eventSerializer = new ReplicaEventSerializer();
     private final Broker broker;
     private final ConnectionContext connectionContext;
-    private final MessageProducer producer;
     private final ReplicaInternalMessageProducer replicaInternalMessageProducer;
 
-    ReplicaBrokerEventListener(Broker broker, MessageProducer producer) {
+    ReplicaBrokerEventListener(Broker broker) {
         this.broker = requireNonNull(broker);
         connectionContext = broker.getAdminConnectionContext().copy();
-        this.producer = producer;
         connectionContext.setUserName(ReplicaSupport.REPLICATION_PLUGIN_USER_NAME);
         replicaInternalMessageProducer = new ReplicaInternalMessageProducer(broker, connectionContext);
     }
@@ -56,8 +52,6 @@ public class ReplicaBrokerEventListener implements MessageListener {
 
         try {
             Object deserializedData = eventSerializer.deserializeMessageData(messageContent);
-            // TODO implement a better redelivery logic https://sim.amazon.com/issues/AMQ-95404
-            AtomicBoolean needsRedelivery = new AtomicBoolean(false);
             getEventType(message).ifPresent(eventType -> {
                 switch (eventType) {
                     case MESSAGE_SEND:
@@ -66,7 +60,7 @@ public class ReplicaBrokerEventListener implements MessageListener {
                         return;
                     case MESSAGE_ACK:
                         logger.trace("Processing replicated message ack");
-                        needsRedelivery.set(consumeAck((MessageAck) deserializedData));
+                        consumeAck((MessageAck) deserializedData);
                         return;
                     case MESSAGE_EXPIRED:
                         logger.trace("Processing replicated message expired");
@@ -137,9 +131,6 @@ public class ReplicaBrokerEventListener implements MessageListener {
                 }
             });
             message.acknowledge();
-            if (needsRedelivery.get()) {
-                producer.send(message);
-            }
         } catch (IOException | ClassCastException e) {
             logger.error("Failed to deserialize replication message (id={}), {}", message.getMessageId(), new String(messageContent.data));
             logger.debug("Deserialization error for replication message (id={})", message.getMessageId(), e);
@@ -168,27 +159,14 @@ public class ReplicaBrokerEventListener implements MessageListener {
         }
     }
 
-    private boolean consumeAck(MessageAck ack) {
+    private void consumeAck(MessageAck ack) {
         try {
-            Queue queue = broker.getDestinations(ack.getDestination()).stream()
-                    .findFirst().map(QueueExtractor::extractQueue).orElseThrow();
-            if (queue.getMessage(ack.getFirstMessageId().toString()) == null) {
-                // Message hasn't been delivered yet. trying one more time
-                return true;
-            }
-            // TODO return the code back when the issue with dispatch is resolved
-//            ConsumerBrokerExchange consumerBrokerExchange = new ConsumerBrokerExchange();
-//            consumerBrokerExchange.setConnectionContext(connectionContext);
-//            broker.acknowledge(consumerBrokerExchange, ack);
-            if (ack.getDestination().isQueue()) {
-                queue.removeMessage(ack.getFirstMessageId().toString());
-            } else {
-                logger.error("Acknowledge for topics doesn't work yet");
-            }
+            ConsumerBrokerExchange consumerBrokerExchange = new ConsumerBrokerExchange();
+            consumerBrokerExchange.setConnectionContext(connectionContext);
+            broker.acknowledge(consumerBrokerExchange, ack);
         } catch (Exception e) {
             logger.error("Failed to process ack with last message id: {}", ack.getLastMessageId(), e);
         }
-        return false;
     }
 
     private void messageExpired(ActiveMQMessage message) {
