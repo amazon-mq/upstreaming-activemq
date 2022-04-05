@@ -16,10 +16,9 @@
  */
 package org.apache.activemq.broker.region;
 
-import org.apache.activemq.command.ActiveMQDestination;
-import org.apache.activemq.command.MessageId;
+import org.apache.activemq.broker.ConnectionContext;
 
 public interface QueueListener {
 
-    void onDropMessage(QueueMessageReference reference);
+    void onDropMessage(ConnectionContext context, QueueMessageReference reference);
 }

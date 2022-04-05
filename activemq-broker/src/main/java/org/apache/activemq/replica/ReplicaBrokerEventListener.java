@@ -2,13 +2,13 @@ package org.apache.activemq.replica;
 
 import org.apache.activemq.broker.Broker;
 import org.apache.activemq.broker.ConnectionContext;
-import org.apache.activemq.broker.ConsumerBrokerExchange;
 import org.apache.activemq.broker.region.Destination;
+import org.apache.activemq.broker.region.MessageReference;
+import org.apache.activemq.broker.region.MessageReferenceFilter;
 import org.apache.activemq.broker.region.Queue;
 import org.apache.activemq.command.ActiveMQDestination;
 import org.apache.activemq.command.ActiveMQMessage;
 import org.apache.activemq.command.ConsumerInfo;
-import org.apache.activemq.command.MessageAck;
 import org.apache.activemq.command.TransactionId;
 import org.apache.activemq.util.ByteSequence;
 import org.slf4j.Logger;
@@ -19,7 +19,10 @@ import javax.jms.Message;
 import javax.jms.MessageListener;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import static java.util.Objects.requireNonNull;
@@ -32,7 +35,7 @@ public class ReplicaBrokerEventListener implements MessageListener {
     private final ConnectionContext connectionContext;
     private final ReplicaInternalMessageProducer replicaInternalMessageProducer;
 
-    ReplicaBrokerEventListener(final Broker broker) {
+    ReplicaBrokerEventListener(Broker broker) {
         this.broker = requireNonNull(broker);
         connectionContext = broker.getAdminConnectionContext().copy();
         connectionContext.setUserName(ReplicaSupport.REPLICATION_PLUGIN_USER_NAME);
@@ -40,7 +43,7 @@ public class ReplicaBrokerEventListener implements MessageListener {
     }
 
     @Override
-    public void onMessage(final Message jmsMessage) {
+    public void onMessage(Message jmsMessage) {
         logger.trace("Received replication message from replica source");
         ActiveMQMessage message = (ActiveMQMessage) jmsMessage;
         ByteSequence messageContent = message.getContent();
@@ -53,17 +56,19 @@ public class ReplicaBrokerEventListener implements MessageListener {
                         logger.trace("Processing replicated message send");
                         persistMessage((ActiveMQMessage) deserializedData);
                         return;
-                    case MESSAGE_ACK:
-                        logger.trace("Processing replicated message ack");
-                        consumeAck((MessageAck) deserializedData);
-                        return;
                     case MESSAGE_EXPIRED:
                         logger.trace("Processing replicated message expired");
                         messageExpired((ActiveMQMessage) deserializedData);
                         return;
-                    case MESSAGE_DROPPED:
-                        logger.trace("Processing replicated message removal due to {}", eventType);
-                        dropMessage((ActiveMQMessage) deserializedData);
+                    case MESSAGES_DROPPED:
+                        logger.trace("Processing replicated messages dropped");
+                        try {
+                            dropMessages(
+                                    (ActiveMQDestination) deserializedData,
+                                    (List<String>) message.getObjectProperty(ReplicaSupport.MESSAGE_IDS_PROPERTY));
+                        } catch (JMSException e) {
+                            logger.error("Failed to extract property to replicated messages dropped [{}]", deserializedData, e);
+                        }
                         return;
                     case DESTINATION_UPSERT:
                         logger.trace("Processing replicated destination");
@@ -130,7 +135,7 @@ public class ReplicaBrokerEventListener implements MessageListener {
         }
     }
 
-    private Optional<ReplicaEventType> getEventType(final ActiveMQMessage message) {
+    private Optional<ReplicaEventType> getEventType(ActiveMQMessage message) {
         try {
             String eventTypeProperty = message.getStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY);
             return Arrays.stream(ReplicaEventType.values())
@@ -142,7 +147,7 @@ public class ReplicaBrokerEventListener implements MessageListener {
         }
     }
 
-    private void persistMessage(final ActiveMQMessage message) {
+    private void persistMessage(ActiveMQMessage message) {
         try {
             replicaInternalMessageProducer.produceToReplicaQueue(message);
         } catch (Exception e) {
@@ -150,19 +155,9 @@ public class ReplicaBrokerEventListener implements MessageListener {
         }
     }
 
-    private void consumeAck(final MessageAck ack) {
+    private void messageExpired(ActiveMQMessage message) {
         try {
-            ConsumerBrokerExchange consumerBrokerExchange = new ConsumerBrokerExchange();
-            consumerBrokerExchange.setConnectionContext(connectionContext);
-            broker.acknowledge(consumerBrokerExchange, ack);
-        } catch (Exception e) {
-            logger.error("Failed to process ack with last message id: {}", ack.getLastMessageId(), e);
-        }
-    }
-
-    private void messageExpired(final ActiveMQMessage message) {
-        try {
-            final Destination destination = broker.getDestinations(message.getDestination()).stream().findFirst().orElseThrow();
+            Destination destination = broker.getDestinations(message.getDestination()).stream().findFirst().orElseThrow();
             message.setRegionDestination(destination);
             broker.messageExpired(connectionContext, message, null);
         } catch (Exception e) {
@@ -170,17 +165,17 @@ public class ReplicaBrokerEventListener implements MessageListener {
         }
     }
 
-    private void dropMessage(final ActiveMQMessage message) {
+    private void dropMessages(ActiveMQDestination destination, List<String> messageIds) {
         try {
-            final Queue queue = broker.getDestinations(message.getDestination()).stream()
+            Queue queue = broker.getDestinations(destination).stream()
                     .findFirst().map(QueueExtractor::extractQueue).orElseThrow();
-            queue.removeMessage(message.getMessageId().toString());
+            queue.removeMatchingMessages(connectionContext, new ListMessageReferenceFilter(messageIds), messageIds.size());
         } catch (Exception e) {
-            logger.error("Unable to replicate message expired [{}]", message.getMessageId(), e);
+            logger.error("Unable to replicate messages dropped [{}]", destination, e);
         }
     }
 
-    private void upsertDestination(final ActiveMQDestination destination) {
+    private void upsertDestination(ActiveMQDestination destination) {
         try {
             boolean isExistingDestination = Arrays.stream(broker.getDestinations())
                     .anyMatch(d -> d.getQualifiedName().equals(destination.getQualifiedName()));
@@ -198,7 +193,7 @@ public class ReplicaBrokerEventListener implements MessageListener {
         }
     }
 
-    private void deleteDestination(final ActiveMQDestination destination) {
+    private void deleteDestination(ActiveMQDestination destination) {
         try {
             boolean isNonExtantDestination = Arrays.stream(broker.getDestinations())
                     .noneMatch(d -> d.getQualifiedName().equals(destination.getQualifiedName()));
@@ -265,6 +260,7 @@ public class ReplicaBrokerEventListener implements MessageListener {
             ConnectionContext context = connectionContext.copy();
             context.setClientId(clientId);
             context.setConnection(new DummyConnection());
+            consumerInfo.setPrefetchSize(0);
             broker.addConsumer(context, consumerInfo);
         } catch (Exception e) {
             logger.error("Unable to replicate add consumer [{}]", consumerInfo, e);
@@ -287,4 +283,16 @@ public class ReplicaBrokerEventListener implements MessageListener {
         }
     }
 
+    static class ListMessageReferenceFilter implements MessageReferenceFilter {
+        final Set<String> messageIds;
+
+        public ListMessageReferenceFilter(List<String> messageIds) {
+            this.messageIds = new HashSet<>(messageIds);
+        }
+
+        @Override
+        public boolean evaluate(ConnectionContext context, MessageReference messageReference) throws JMSException {
+            return messageIds.contains(messageReference.getMessageId().toString());
+        }
+    }
 }

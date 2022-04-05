@@ -22,12 +22,15 @@ import org.apache.activemq.command.MessageId;
 import org.apache.activemq.command.ProducerInfo;
 import org.apache.activemq.command.TransactionId;
 import org.apache.activemq.filter.DestinationMapEntry;
+import org.apache.activemq.thread.TaskRunner;
+import org.apache.activemq.thread.TaskRunnerFactory;
 import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.net.URI;
+import java.util.Collections;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -52,7 +55,9 @@ public class ReplicaSourceBrokerTest {
     private final URI transportConnectorUri = URI.create("tcp://0.0.0.0:61618?maximumConnections=1&amp;wireFormat.maxFrameSize=104857600");
     private final ReplicaSourceBroker source = new ReplicaSourceBroker(broker, transportConnectorUri);
     private final ReplicaEventSerializer eventSerializer = new ReplicaEventSerializer();
-    private TransportConnector transportConnector = mock(TransportConnector.class);
+    private final TransportConnector transportConnector = mock(TransportConnector.class);
+    private final TaskRunnerFactory taskRunnerFactory = mock(TaskRunnerFactory.class);
+    private final TaskRunner taskRunner = mock(TaskRunner.class);
 
     private final ActiveMQQueue testDestination = new ActiveMQQueue("TEST.QUEUE");
 
@@ -63,11 +68,12 @@ public class ReplicaSourceBrokerTest {
         when(brokerService.getBroker()).thenReturn(source);
         when(brokerService.getDestinationInterceptors()).thenReturn(new DestinationInterceptor[] {});
         when(brokerService.addConnector(transportConnectorUri)).thenReturn(transportConnector);
+        when(brokerService.getTaskRunnerFactory()).thenReturn(taskRunnerFactory);
         when(connectionContext.isProducerFlowControl()).thenReturn(true);
         when(connectionContext.getConnector()).thenReturn(transportConnector);
         when(transportConnector.getName()).thenReturn("test");
         when(connectionContext.getClientId()).thenReturn("clientId");
-
+        when(taskRunnerFactory.createTaskRunner(any(), any())).thenReturn(taskRunner);
 
         source.destinationsToReplicate.put(testDestination, IS_REPLICATED);
     }
@@ -346,34 +352,6 @@ public class ReplicaSourceBrokerTest {
     }
 
     @Test
-    public void replicates_MESSAGE_ACK() throws Exception {
-        source.start();
-
-        MessageId messageId = new MessageId("1:1");
-        MessageAck message = new MessageAck();
-        message.setMessageID(messageId);
-        message.setDestination(testDestination);
-
-        ConsumerBrokerExchange consumerBrokerExchange = new ConsumerBrokerExchange();
-        consumerBrokerExchange.setConnectionContext(connectionContext);
-
-        source.acknowledge(consumerBrokerExchange, message);
-
-        ArgumentCaptor<MessageAck> consumeMessageArgumentCaptor = ArgumentCaptor.forClass(MessageAck.class);
-        verify(broker, times(1)).acknowledge(any(), consumeMessageArgumentCaptor.capture());
-        ArgumentCaptor<ActiveMQMessage> sendMessageArgumentCaptor = ArgumentCaptor.forClass(ActiveMQMessage.class);
-        verify(broker, times(1)).send(any(), sendMessageArgumentCaptor.capture());
-        MessageAck originalMessage = consumeMessageArgumentCaptor.getValue();
-        assertThat(originalMessage).isEqualTo(message);
-        ActiveMQMessage replicationMessage = sendMessageArgumentCaptor.getValue();
-        final MessageAck ackMessage = (MessageAck) eventSerializer.deserializeMessageData(replicationMessage.getContent());
-        assertThat(replicationMessage.getProperty(ReplicaEventType.EVENT_TYPE_PROPERTY)).isEqualTo(ReplicaEventType.MESSAGE_ACK.name());
-        assertThat(ackMessage.getLastMessageId()).isEqualTo(messageId);
-        assertThat(ackMessage.getDestination()).isEqualTo(testDestination);
-        verifyConnectionContext(connectionContext);
-    }
-
-    @Test
     public void replicates_PREPARE_TRANSACTION() throws Exception {
         source.start();
 
@@ -496,20 +474,12 @@ public class ReplicaSourceBrokerTest {
         message.setMessageId(messageId);
         message.setDestination(testDestination);
 
-        source.onDropMessage(new IndirectMessageReference(message));
+        IndirectMessageReference messageReference = new IndirectMessageReference(message);
+        source.onDropMessage(connectionContext, messageReference);
 
-        ArgumentCaptor<ActiveMQMessage> messageArgumentCaptor = ArgumentCaptor.forClass(ActiveMQMessage.class);
-        verify(broker).send(any(), messageArgumentCaptor.capture());
-        ActiveMQMessage replicaMessage = messageArgumentCaptor.getValue();
+        assertThat(source.dropMessages).contains(messageReference);
 
-        assertThat(replicaMessage.getType()).isEqualTo("ReplicaEvent");
-        assertThat(replicaMessage.getDestination().getPhysicalName()).isEqualTo(ReplicaSupport.REPLICATION_QUEUE_NAME);
-        assertThat(replicaMessage.getProperty(ReplicaEventType.EVENT_TYPE_PROPERTY)).isEqualTo(ReplicaEventType.MESSAGE_DROPPED.name());
-
-        final ActiveMQMessage sentMessage = (ActiveMQMessage) eventSerializer.deserializeMessageData(replicaMessage.getContent());
-        assertThat(sentMessage.getMessageId()).isEqualTo(messageId);
-        assertThat(sentMessage.getDestination()).isEqualTo(testDestination);
-        verifyConnectionContext(connectionContext);
+        verify(taskRunner).wakeup();
     }
 
     @Test
@@ -534,6 +504,34 @@ public class ReplicaSourceBrokerTest {
         final ActiveMQMessage sentMessage = (ActiveMQMessage) eventSerializer.deserializeMessageData(replicaMessage.getContent());
         assertThat(sentMessage.getMessageId()).isEqualTo(messageId);
         assertThat(sentMessage.getDestination()).isEqualTo(testDestination);
+        verifyConnectionContext(connectionContext);
+    }
+
+    @Test
+    public void iterateTest() throws Exception {
+        source.start();
+
+        MessageId messageId = new MessageId("1:1");
+        ActiveMQMessage message = new ActiveMQMessage();
+        message.setMessageId(messageId);
+        message.setDestination(testDestination);
+
+        IndirectMessageReference messageReference = new IndirectMessageReference(message);
+        source.dropMessages.addMessageLast(messageReference);
+
+        source.iterate();
+
+        ArgumentCaptor<ActiveMQMessage> messageArgumentCaptor = ArgumentCaptor.forClass(ActiveMQMessage.class);
+        verify(broker).send(any(), messageArgumentCaptor.capture());
+        ActiveMQMessage replicaMessage = messageArgumentCaptor.getValue();
+
+        assertThat(replicaMessage.getType()).isEqualTo("ReplicaEvent");
+        assertThat(replicaMessage.getDestination().getPhysicalName()).isEqualTo(ReplicaSupport.REPLICATION_QUEUE_NAME);
+        assertThat(replicaMessage.getProperty(ReplicaEventType.EVENT_TYPE_PROPERTY)).isEqualTo(ReplicaEventType.MESSAGES_DROPPED.name());
+
+        ActiveMQDestination sentMessage = (ActiveMQDestination) eventSerializer.deserializeMessageData(replicaMessage.getContent());
+        assertThat(sentMessage).isEqualTo(testDestination);
+        assertThat(replicaMessage.getProperty(ReplicaSupport.MESSAGE_IDS_PROPERTY)).isEqualTo(Collections.singletonList(messageId.toString()));
         verifyConnectionContext(connectionContext);
     }
 

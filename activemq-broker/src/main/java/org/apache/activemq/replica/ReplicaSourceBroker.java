@@ -6,7 +6,6 @@ import org.apache.activemq.broker.BrokerFilter;
 import org.apache.activemq.broker.Connection;
 import org.apache.activemq.broker.ConnectionContext;
 import org.apache.activemq.broker.Connector;
-import org.apache.activemq.broker.ConsumerBrokerExchange;
 import org.apache.activemq.broker.ProducerBrokerExchange;
 import org.apache.activemq.broker.TransportConnector;
 import org.apache.activemq.broker.region.Destination;
@@ -15,6 +14,8 @@ import org.apache.activemq.broker.region.Queue;
 import org.apache.activemq.broker.region.QueueListener;
 import org.apache.activemq.broker.region.QueueMessageReference;
 import org.apache.activemq.broker.region.Subscription;
+import org.apache.activemq.broker.region.cursors.OrderedPendingList;
+import org.apache.activemq.broker.region.cursors.PendingList;
 import org.apache.activemq.broker.region.virtual.VirtualDestination;
 import org.apache.activemq.command.ActiveMQDestination;
 import org.apache.activemq.command.ActiveMQMessage;
@@ -22,7 +23,6 @@ import org.apache.activemq.command.BrokerInfo;
 import org.apache.activemq.command.ConsumerInfo;
 import org.apache.activemq.command.DestinationInfo;
 import org.apache.activemq.command.Message;
-import org.apache.activemq.command.MessageAck;
 import org.apache.activemq.command.MessageDispatch;
 import org.apache.activemq.command.MessageDispatchNotification;
 import org.apache.activemq.command.MessageId;
@@ -35,6 +35,8 @@ import org.apache.activemq.command.TransactionId;
 import org.apache.activemq.filter.DestinationMap;
 import org.apache.activemq.filter.DestinationMapEntry;
 import org.apache.activemq.security.SecurityContext;
+import org.apache.activemq.thread.Task;
+import org.apache.activemq.thread.TaskRunner;
 import org.apache.activemq.util.IdGenerator;
 import org.apache.activemq.util.LongSequenceGenerator;
 import org.slf4j.Logger;
@@ -42,10 +44,17 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.URI;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
-public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
+public class ReplicaSourceBroker extends BrokerFilter implements QueueListener, Task {
 
     private static final Logger logger = LoggerFactory.getLogger(ReplicaSourceBroker.class);
     private static final DestinationMapEntry<Boolean> IS_REPLICATED = new DestinationMapEntry<>() {}; // used in destination map to indicate mirrored status
@@ -60,6 +69,12 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
     final ReplicaReplicationQueueSupplier queueProvider;
     private final URI transportConnectorUri;
     private ReplicaInternalMessageProducer replicaInternalMessageProducer;
+
+    private final ReentrantReadWriteLock dropMessagesLock = new ReentrantReadWriteLock();
+    final PendingList dropMessages = new OrderedPendingList();
+    private final Object iteratingMutex = new Object();
+    private final AtomicLong pendingWakeups = new AtomicLong();
+    private TaskRunner taskRunner;
 
     public ReplicaSourceBroker(Broker next, URI transportConnectorUri) {
         super(next);
@@ -78,11 +93,20 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
 
         replicaInternalMessageProducer = new ReplicaInternalMessageProducer(next, getAdminConnectionContext());
 
+        taskRunner = getBrokerService().getTaskRunnerFactory().createTaskRunner(this, "ReplicationPlugin.dropMessages");
+
         super.start();
 
         ensureDestinationsAreReplicated();
     }
 
+    @Override
+    public void stop() throws Exception {
+        super.stop();
+        if (taskRunner != null) {
+            taskRunner.shutdown();
+        }
+    }
 
     private void ensureDestinationsAreReplicated() throws Exception {
         for (ActiveMQDestination d : getDurableDestinations()) { // TODO: support non-durable?
@@ -155,6 +179,9 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
     }
 
     private void replicateSend(ProducerBrokerExchange context, Message message, ActiveMQDestination destination) {
+        if (isReplicationQueue(message.getDestination())) {
+            return;
+        }
         if (message.isAdvisory()) {  // TODO: only replicate what we care about
             return;
         }
@@ -285,40 +312,13 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
     }
 
     @Override
-    public void acknowledge(ConsumerBrokerExchange consumerExchange, MessageAck ack) throws Exception {
-        super.acknowledge(consumerExchange, ack);
-        replicateAck(consumerExchange.getConnectionContext(), consumerExchange.getSubscription(), ack);
-    }
-
-    private void replicateAck(ConnectionContext context, Subscription sub, MessageAck ack) {
-        if (!isReplicatedDestination(ack.getDestination())) {
-            return;
-        }
-        try {
-            enqueueReplicaEvent(
-                    context,
-                    new ReplicaEvent()
-                            .setEventType(ReplicaEventType.MESSAGE_ACK)
-                            .setEventData(eventSerializer.serializeReplicationData(ack))
-            );
-        } catch (Exception e) {
-            logger.error(
-                    "Failed to replicate ACK {}<->{} for consumer {}",
-                    ack.getFirstMessageId(),
-                    ack.getLastMessageId(),
-                    sub.getConsumerInfo()
-            );
-        }
-    }
-
-    @Override
     public Response messagePull(ConnectionContext context, MessagePull pull) throws Exception {
         return super.messagePull(context, pull);
     }
 
     @Override
     public Subscription addConsumer(ConnectionContext context, ConsumerInfo consumerInfo) throws Exception {
-        assertAuthorized(context,  consumerInfo.getDestination(), true);
+        assertAuthorized(context, consumerInfo.getDestination());
 
         Subscription subscription = super.addConsumer(context, consumerInfo);
         replicateAddConsumer(context, consumerInfo);
@@ -371,7 +371,7 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
         // operation must specify a destination.  Because of this, we only authorize 'addProducer' if a destination is
         // specified. If not specified, the authz check in the 'send' method below will ensure authorization.
         if (producerInfo.getDestination() != null) {
-            assertAuthorized(context, producerInfo.getDestination(), false);
+            assertAuthorized(context, producerInfo.getDestination());
         }
         super.addProducer(context, producerInfo);
     }
@@ -380,14 +380,14 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
         return connector instanceof TransportConnector && ((TransportConnector) connector).getName().equals(REPLICATION_CONNECTOR_NAME);
     }
 
-    protected void assertAuthorized(ConnectionContext context, ActiveMQDestination destination, boolean consumer) {
+    protected void assertAuthorized(ConnectionContext context, ActiveMQDestination destination) {
         boolean replicationQueue = isReplicationQueue(destination);
         boolean replicationTransport = isReplicationTransport(context.getConnector());
 
         if (isSystemBroker(context)) {
             return;
         }
-        if (replicationTransport && consumer && (replicationQueue || isAdvisoryDestination(destination))) {
+        if (replicationTransport && (replicationQueue || isAdvisoryDestination(destination))) {
             return;
         }
         if (!replicationTransport && !replicationQueue) {
@@ -549,22 +549,81 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener {
     }
 
     @Override
-    public void onDropMessage(QueueMessageReference reference) {
-        // TODO because there is no ConnectionContext it may trigger the event on both sides.
-        // TODO But when the event gets to the initial source. the message will be already deleted, so we should be fine.
+    public void onDropMessage(ConnectionContext context, QueueMessageReference reference) {
+        if (isReplicaContext(context)) {
+            return;
+        }
         Message message = reference.getMessage();
         if (!isReplicatedDestination(message.getDestination())) {
             return;
         }
+
+        dropMessagesLock.writeLock().lock();
+        try {
+            dropMessages.addMessageLast(reference);
+        } finally {
+            dropMessagesLock.writeLock().unlock();
+        }
+        asyncWakeup();
+    }
+
+    private void asyncWakeup() {
+        try {
+            pendingWakeups.incrementAndGet();
+            taskRunner.wakeup();
+        } catch (InterruptedException e) {
+            logger.warn("Async task runner failed to wakeup ", e);
+        }
+    }
+
+    @Override
+    public boolean iterate() {
+        synchronized (iteratingMutex) {
+            PendingList messages = new OrderedPendingList();
+            dropMessagesLock.readLock().lock();
+            try {
+                messages.addAll(dropMessages);
+            } finally {
+                dropMessagesLock.readLock().unlock();
+            }
+
+            if (!messages.isEmpty()) {
+                Map<ActiveMQDestination, Set<String>> map = new HashMap<>();
+                for (MessageReference message : messages) {
+                    Set<String> messageIds = map.computeIfAbsent(message.getMessage().getDestination(), k -> new HashSet<>());
+                    messageIds.add(message.getMessageId().toString());
+
+                    dropMessagesLock.writeLock().lock();
+                    try {
+                        dropMessages.remove(message);
+                    } finally {
+                        dropMessagesLock.writeLock().unlock();
+                    }
+                }
+
+                for (Map.Entry<ActiveMQDestination, Set<String>> entry : map.entrySet()) {
+                    replicateDropMessages(entry.getKey(), new ArrayList<>(entry.getValue()));
+                }
+            }
+
+            if (pendingWakeups.get() > 0) {
+                pendingWakeups.decrementAndGet();
+            }
+            return pendingWakeups.get() > 0;
+        }
+    }
+
+    private void replicateDropMessages(ActiveMQDestination destination, List<String> messageIds) {
         try {
             enqueueReplicaEvent(
                     null,
                     new ReplicaEvent()
-                            .setEventType(ReplicaEventType.MESSAGE_DROPPED)
-                            .setEventData(eventSerializer.serializeReplicationData(reference.getMessage()))
+                            .setEventType(ReplicaEventType.MESSAGES_DROPPED)
+                            .setEventData(eventSerializer.serializeReplicationData(destination))
+                            .setReplicationProperty(ReplicaSupport.MESSAGE_IDS_PROPERTY, messageIds)
             );
         } catch (Exception e) {
-            logger.error("Failed to replicate drop message {}", reference.getMessageId(), e);
+            logger.error("Failed to replicate drop messages {} - {}", destination, messageIds, e);
         }
     }
 }
