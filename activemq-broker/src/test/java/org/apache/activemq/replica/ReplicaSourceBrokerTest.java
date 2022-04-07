@@ -252,8 +252,8 @@ public class ReplicaSourceBrokerTest {
         source.addProducer(connectionContext, producerInfo);
     }
 
-    @Test(expected = ActiveMQReplicaException.class)
-    public void doesNotLetCreateProducerForReplicaQueueFromReplicaConnection() throws Exception {
+    @Test
+    public void letsCreateProducerForReplicaQueueFromReplicaConnection() throws Exception {
         source.start();
 
         when(transportConnector.getName()).thenReturn(ReplicaSourceBroker.REPLICATION_CONNECTOR_NAME);
@@ -261,6 +261,8 @@ public class ReplicaSourceBrokerTest {
         ProducerInfo producerInfo = new ProducerInfo();
         producerInfo.setDestination(source.queueProvider.get());
         source.addProducer(connectionContext, producerInfo);
+
+        verify(broker).addProducer(eq(connectionContext), eq(producerInfo));
     }
 
     @Test
@@ -301,6 +303,7 @@ public class ReplicaSourceBrokerTest {
 
         ActiveMQMessage message = new ActiveMQMessage();
         message.setMessageId(messageId);
+        message.setDestination(testDestination);
 
         ProducerBrokerExchange producerExchange = new ProducerBrokerExchange();
         producerExchange.setConnectionContext(connectionContext);
@@ -312,14 +315,14 @@ public class ReplicaSourceBrokerTest {
 
         final List<ActiveMQMessage> values = messageArgumentCaptor.getAllValues();
 
-        ActiveMQMessage originalMessage = values.get(0);
-        assertThat(originalMessage).isEqualTo(message);
-
-        ActiveMQMessage replicaMessage = values.get(1);
+        ActiveMQMessage replicaMessage = values.get(0);
         assertThat(replicaMessage.getType()).isEqualTo("ReplicaEvent");
         assertThat(replicaMessage.getDestination().getPhysicalName()).isEqualTo(ReplicaSupport.REPLICATION_QUEUE_NAME);
         assertThat(replicaMessage.getProperty(ReplicaEventType.EVENT_TYPE_PROPERTY)).isEqualTo(ReplicaEventType.MESSAGE_SEND.name());
         assertThat(eventSerializer.deserializeMessageData(replicaMessage.getContent())).isEqualTo(message);
+
+        ActiveMQMessage originalMessage = values.get(1);
+        assertThat(originalMessage).isEqualTo(message);
 
         verifyConnectionContext(connectionContext);
     }
@@ -333,6 +336,7 @@ public class ReplicaSourceBrokerTest {
         ActiveMQMessage message = new ActiveMQMessage();
         message.setMessageId(messageId);
         message.setType(AdvisorySupport.ADIVSORY_MESSAGE_TYPE);
+        message.setDestination(testDestination);
 
         ProducerBrokerExchange producerExchange = new ProducerBrokerExchange();
         producerExchange.setConnectionContext(connectionContext);

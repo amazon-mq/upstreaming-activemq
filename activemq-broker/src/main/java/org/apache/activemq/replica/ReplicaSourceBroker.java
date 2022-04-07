@@ -9,6 +9,7 @@ import org.apache.activemq.broker.Connector;
 import org.apache.activemq.broker.ProducerBrokerExchange;
 import org.apache.activemq.broker.TransportConnector;
 import org.apache.activemq.broker.region.Destination;
+import org.apache.activemq.broker.region.IndirectMessageReference;
 import org.apache.activemq.broker.region.MessageReference;
 import org.apache.activemq.broker.region.Queue;
 import org.apache.activemq.broker.region.QueueListener;
@@ -73,6 +74,7 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener, 
     private final ReentrantReadWriteLock dropMessagesLock = new ReentrantReadWriteLock();
     final PendingList dropMessages = new OrderedPendingList();
     private final Object iteratingMutex = new Object();
+    private final Object sendingMutex = new Object();
     private final AtomicLong pendingWakeups = new AtomicLong();
     private TaskRunner taskRunner;
 
@@ -150,28 +152,30 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener, 
             return;
         }
 
-        logger.debug("Replicating {} event", event.getEventType());
-        logger.error("Replicating {} event: data:\n{}", event.getEventType(), new Object() {
-            @Override
-            public String toString() {
-                try {
-                    return eventSerializer.deserializeMessageData(event.getEventData()).toString();
-                } catch (IOException e) {
-                    return "<some event data>";
+        synchronized (sendingMutex) {
+            logger.debug("Replicating {} event", event.getEventType());
+            logger.trace("Replicating {} event: data:\n{}", event.getEventType(), new Object() {
+                @Override
+                public String toString() {
+                    try {
+                        return eventSerializer.deserializeMessageData(event.getEventData()).toString();
+                    } catch (IOException e) {
+                        return "<some event data>";
+                    }
                 }
-            }
-        }); // FIXME: remove
-        ActiveMQMessage eventMessage = new ActiveMQMessage();
-        eventMessage.setPersistent(true);
-        eventMessage.setType("ReplicaEvent");
-        eventMessage.setStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY, event.getEventType().name());
-        eventMessage.setMessageId(new MessageId(replicationProducerId, eventMessageIdGenerator.getNextSequenceId()));
-        eventMessage.setDestination(queueProvider.get());
-        eventMessage.setProducerId(replicationProducerId);
-        eventMessage.setResponseRequired(false);
-        eventMessage.setContent(event.getEventData());
-        eventMessage.setProperties(event.getReplicationProperties());
-        replicaInternalMessageProducer.produceToReplicaQueue(eventMessage);
+            }); // FIXME: remove
+            ActiveMQMessage eventMessage = new ActiveMQMessage();
+            eventMessage.setPersistent(true);
+            eventMessage.setType("ReplicaEvent");
+            eventMessage.setStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY, event.getEventType().name());
+            eventMessage.setMessageId(new MessageId(replicationProducerId, eventMessageIdGenerator.getNextSequenceId()));
+            eventMessage.setDestination(queueProvider.get());
+            eventMessage.setProducerId(replicationProducerId);
+            eventMessage.setResponseRequired(false);
+            eventMessage.setContent(event.getEventData());
+            eventMessage.setProperties(event.getReplicationProperties());
+            replicaInternalMessageProducer.produceToReplicaQueue(eventMessage);
+        }
     }
 
     private boolean isReplicaContext(ConnectionContext initialContext) {
@@ -438,8 +442,13 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener, 
 
     @Override
     public void send(ProducerBrokerExchange producerExchange, Message messageSend) throws Exception {
-        super.send(producerExchange, messageSend);
         replicateSend(producerExchange, messageSend, messageSend.getDestination());
+        try {
+            super.send(producerExchange, messageSend);
+        } catch (Exception e) {
+            onDropMessage(producerExchange.getConnectionContext(), new IndirectMessageReference(messageSend));
+            throw e;
+        }
     }
 
     @Override
