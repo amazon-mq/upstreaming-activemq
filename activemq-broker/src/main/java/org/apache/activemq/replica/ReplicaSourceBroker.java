@@ -52,6 +52,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
@@ -78,6 +79,8 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener, 
     private final AtomicLong pendingWakeups = new AtomicLong();
     private TaskRunner taskRunner;
 
+    private final AtomicBoolean initialized = new AtomicBoolean();
+
     public ReplicaSourceBroker(Broker next, URI transportConnectorUri) {
         super(next);
         this.transportConnectorUri = Objects.requireNonNull(transportConnectorUri, "Need replication transport connection URI for this broker");
@@ -92,6 +95,7 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener, 
 
         queueProvider.initialize();
         logger.info("Replica plugin initialized with queue {}", queueProvider.get());
+        initialized.compareAndSet(false, true);
 
         replicaInternalMessageProducer = new ReplicaInternalMessageProducer(next, getAdminConnectionContext());
 
@@ -149,6 +153,9 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener, 
 
     private void enqueueReplicaEvent(ConnectionContext initialContext, ReplicaEvent event) throws Exception {
         if (isReplicaContext(initialContext)) {
+            return;
+        }
+        if (!initialized.get()) {
             return;
         }
 
