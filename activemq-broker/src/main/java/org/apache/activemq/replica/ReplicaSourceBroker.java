@@ -15,6 +15,8 @@ import org.apache.activemq.broker.region.Queue;
 import org.apache.activemq.broker.region.QueueListener;
 import org.apache.activemq.broker.region.QueueMessageReference;
 import org.apache.activemq.broker.region.Subscription;
+import org.apache.activemq.broker.region.Topic;
+import org.apache.activemq.broker.region.TopicListener;
 import org.apache.activemq.broker.region.cursors.OrderedPendingList;
 import org.apache.activemq.broker.region.cursors.PendingList;
 import org.apache.activemq.broker.region.virtual.VirtualDestination;
@@ -24,6 +26,7 @@ import org.apache.activemq.command.BrokerInfo;
 import org.apache.activemq.command.ConsumerInfo;
 import org.apache.activemq.command.DestinationInfo;
 import org.apache.activemq.command.Message;
+import org.apache.activemq.command.MessageAck;
 import org.apache.activemq.command.MessageDispatch;
 import org.apache.activemq.command.MessageDispatchNotification;
 import org.apache.activemq.command.MessageId;
@@ -56,7 +59,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
-public class ReplicaSourceBroker extends BrokerFilter implements QueueListener, Task {
+public class ReplicaSourceBroker extends BrokerFilter implements QueueListener, TopicListener, Task {
 
     private static final Logger logger = LoggerFactory.getLogger(ReplicaSourceBroker.class);
     private static final DestinationMapEntry<Boolean> IS_REPLICATED = new DestinationMapEntry<>() {}; // used in destination map to indicate mirrored status
@@ -337,6 +340,9 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener, 
     }
 
     private void replicateAddConsumer(ConnectionContext context, ConsumerInfo consumerInfo) {
+        if (!needToReplicateConsumer(consumerInfo)) {
+            return;
+        }
         if (isReplicationTransport(context.getConnector())) {
             return;
         }
@@ -344,13 +350,19 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener, 
             enqueueReplicaEvent(
                     context,
                     new ReplicaEvent()
-                            .setEventType(ReplicaEventType.ADD_CONSUMER)
+                            .setEventType(ReplicaEventType.ADD_DURABLE_CONSUMER)
                             .setEventData(eventSerializer.serializeReplicationData(consumerInfo))
                             .setReplicationProperty(ReplicaSupport.CLIENT_ID_PROPERTY, context.getClientId())
             );
         } catch (Exception e) {
             logger.error("Failed to replicate adding {}", consumerInfo, e);
         }
+    }
+
+    private boolean needToReplicateConsumer(ConsumerInfo consumerInfo) {
+        return consumerInfo.getDestination().isTopic() &&
+                consumerInfo.isDurable() &&
+                !consumerInfo.isNetworkSubscription();
     }
 
     @Override
@@ -360,6 +372,9 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener, 
     }
 
     private void replicateRemoveConsumer(ConnectionContext context, ConsumerInfo consumerInfo) {
+        if (!needToReplicateConsumer(consumerInfo)) {
+            return;
+        }
         if (isReplicationTransport(context.getConnector())) {
             return;
         }
@@ -367,9 +382,8 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener, 
             enqueueReplicaEvent(
                     context,
                     new ReplicaEvent()
-                            .setEventType(ReplicaEventType.REMOVE_CONSUMER)
+                            .setEventType(ReplicaEventType.REMOVE_DURABLE_CONSUMER)
                             .setEventData(eventSerializer.serializeReplicationData(consumerInfo))
-                            .setReplicationProperty(ReplicaSupport.CLIENT_ID_PROPERTY, context.getClientId())
             );
         } catch (Exception e) {
             logger.error("Failed to replicate adding {}", consumerInfo, e);
@@ -449,11 +463,17 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener, 
 
     @Override
     public void send(ProducerBrokerExchange producerExchange, Message messageSend) throws Exception {
-        replicateSend(producerExchange, messageSend, messageSend.getDestination());
+        ActiveMQDestination destination = messageSend.getDestination();
+        replicateSend(producerExchange, messageSend, destination);
         try {
             super.send(producerExchange, messageSend);
         } catch (Exception e) {
-            onDropMessage(producerExchange.getConnectionContext(), new IndirectMessageReference(messageSend));
+            if (destination.isQueue()) {
+                onDropMessage(producerExchange.getConnectionContext(), new IndirectMessageReference(messageSend));
+            }
+            if (destination.isTopic()) {
+                // TODO have correct handling of durable subscribers if there is such a situation
+            }
             throw e;
         }
     }
@@ -482,9 +502,15 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener, 
         if (shouldReplicateDestination(destination)) {
             replicateDestinationCreation(context, destination);
             if (destination.isQueue()) {
-                Queue queue = QueueExtractor.extractQueue(newDestination);
+                Queue queue = DestinationExtractor.extractQueue(newDestination);
                 if (queue != null && !queue.getListeners().contains(this)) {
                     queue.addListener(this);
+                }
+            }
+            if (destination.isTopic()) {
+                Topic topic = DestinationExtractor.extractTopic(newDestination);
+                if (topic != null && !topic.getListeners().contains(this)) {
+                    topic.addListener(this);
                 }
             }
         }
@@ -640,6 +666,26 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener, 
             );
         } catch (Exception e) {
             logger.error("Failed to replicate drop messages {} - {}", destination, messageIds, e);
+        }
+    }
+
+    @Override
+    public void onAck(ConnectionContext context, Subscription sub, MessageAck ack, MessageReference node) {
+        try {
+            enqueueReplicaEvent(
+                    context,
+                    new ReplicaEvent()
+                            .setEventType(ReplicaEventType.TOPIC_MESSAGE_ACK)
+                            .setEventData(eventSerializer.serializeReplicationData(node.getMessage()))
+                            .setReplicationProperty(ReplicaSupport.CUSTOMER_ID_PROPERTY, sub.getConsumerInfo().getConsumerId().toString())
+                            .setReplicationProperty(ReplicaSupport.ACK_TYPE_PROPERTY, ack.getAckType())
+            );
+        } catch (Exception e) {
+            logger.error(
+                    "Failed to replicate ACK {} for consumer {}",
+                    node.getMessageId(),
+                    sub.getConsumerInfo()
+            );
         }
     }
 }

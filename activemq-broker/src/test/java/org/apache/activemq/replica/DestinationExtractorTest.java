@@ -8,12 +8,12 @@ import org.junit.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
-public class QueueExtractorTest {
+public class DestinationExtractorTest {
 
     @Test
     public void extractQueueFromQueue() {
         Queue queue = mock(Queue.class);
-        Queue result = QueueExtractor.extractQueue(queue);
+        Queue result = DestinationExtractor.extractQueue(queue);
 
         assertThat(result).isEqualTo(queue);
     }
@@ -21,7 +21,7 @@ public class QueueExtractorTest {
     @Test
     public void extractQueueFromDestinationFilter() {
         Queue queue = mock(Queue.class);
-        Queue result = QueueExtractor.extractQueue(new DestinationFilter(queue));
+        Queue result = DestinationExtractor.extractQueue(new DestinationFilter(queue));
 
         assertThat(result).isEqualTo(queue);
     }
@@ -29,7 +29,7 @@ public class QueueExtractorTest {
     @Test
     public void extractNullFromNonQueue() {
         Topic topic = mock(Topic.class);
-        Queue result = QueueExtractor.extractQueue(topic);
+        Queue result = DestinationExtractor.extractQueue(topic);
 
         assertThat(result).isNull();
     }

@@ -3,17 +3,23 @@ package org.apache.activemq.replica;
 import org.apache.activemq.broker.Broker;
 import org.apache.activemq.broker.ConnectionContext;
 import org.apache.activemq.broker.region.Destination;
+import org.apache.activemq.broker.region.DestinationStatistics;
+import org.apache.activemq.broker.region.DurableTopicSubscription;
 import org.apache.activemq.broker.region.MessageReference;
 import org.apache.activemq.broker.region.MessageReferenceFilter;
 import org.apache.activemq.broker.region.Queue;
 import org.apache.activemq.broker.region.Region;
 import org.apache.activemq.broker.region.RegionBroker;
+import org.apache.activemq.broker.region.SubscriptionStatistics;
+import org.apache.activemq.broker.region.Topic;
 import org.apache.activemq.command.ActiveMQDestination;
 import org.apache.activemq.command.ActiveMQMessage;
 import org.apache.activemq.command.ActiveMQQueue;
 import org.apache.activemq.command.ConnectionId;
+import org.apache.activemq.command.ConsumerId;
 import org.apache.activemq.command.ConsumerInfo;
 import org.apache.activemq.command.LocalTransactionId;
+import org.apache.activemq.command.MessageAck;
 import org.apache.activemq.command.MessageId;
 import org.apache.activemq.command.TransactionId;
 import org.junit.Before;
@@ -40,7 +46,9 @@ public class ReplicaBrokerEventListenerTest {
     private final RegionBroker regionBroker = mock(RegionBroker.class);
     private final Region region = mock(Region.class);
     private final ActiveMQQueue testQueue = new ActiveMQQueue("TEST.QUEUE");
+    private final ActiveMQQueue testTopic = new ActiveMQQueue("TEST.TOPIC");
     private final Destination destinationQueue = mock(Queue.class);
+    private final Destination destinationTopic = mock(Topic.class);
     private final ConnectionContext connectionContext = mock(ConnectionContext.class);
 
     private ReplicaBrokerEventListener listener;
@@ -52,10 +60,12 @@ public class ReplicaBrokerEventListenerTest {
         when(adminConnectionContext.copy()).thenReturn(connectionContext);
         when(broker.getAdminConnectionContext()).thenReturn(adminConnectionContext);
         when(broker.getDestinations(testQueue)).thenReturn(Set.of(destinationQueue));
+        when(broker.getDestinations(testTopic)).thenReturn(Set.of(destinationTopic));
         when(connectionContext.isProducerFlowControl()).thenReturn(true);
         when(broker.getAdaptor(RegionBroker.class)).thenReturn(regionBroker);
         when(regionBroker.getRegion(testQueue)).thenReturn(region);
         when(connectionContext.copy()).thenReturn(new ConnectionContext());
+        when(connectionContext.getUserName()).thenReturn(ReplicaSupport.REPLICATION_PLUGIN_USER_NAME);
 
         listener = new ReplicaBrokerEventListener(broker);
     }
@@ -159,6 +169,56 @@ public class ReplicaBrokerEventListenerTest {
         verify(connectionContext).isProducerFlowControl();
         verify(connectionContext).setProducerFlowControl(false);
         verify(connectionContext).setProducerFlowControl(true);
+
+        verify(replicaEventMessage).acknowledge();
+    }
+
+    @Test
+    public void canHandleEventOfType_MESSAGE_ACK() throws Exception {
+        MessageId messageId = new MessageId("1:1:1:1");
+        ActiveMQMessage message = new ActiveMQMessage();
+        message.setMessageId(messageId);
+        message.setDestination(testTopic);
+
+        ConsumerInfo consumerInfo = new ConsumerInfo();
+        ConsumerId consumerId = new ConsumerId();
+        consumerId.setConnectionId("CONNECTION_ID");
+        consumerInfo.setConsumerId(consumerId);
+
+        SubscriptionStatistics subscriptionStatistics = new SubscriptionStatistics();
+        subscriptionStatistics.setEnabled(true);
+
+        DurableTopicSubscription subscription = mock(DurableTopicSubscription.class);
+        when(subscription.getConsumerInfo()).thenReturn(consumerInfo);
+        when(subscription.getSubscriptionStatistics()).thenReturn(subscriptionStatistics);
+
+        DestinationStatistics destinationStatistics = new DestinationStatistics();
+        destinationStatistics.setEnabled(true);
+
+        when(destinationTopic.getConsumers()).thenReturn(Collections.singletonList(subscription));
+        when(destinationTopic.getDestinationStatistics()).thenReturn(destinationStatistics);
+
+        ReplicaEvent event = new ReplicaEvent()
+                .setEventType(ReplicaEventType.TOPIC_MESSAGE_ACK)
+                .setEventData(eventSerializer.serializeReplicationData(message));
+        ActiveMQMessage replicaEventMessage = spy(new ActiveMQMessage());
+        replicaEventMessage.setType("ReplicaEvent");
+        replicaEventMessage.setStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY, event.getEventType().name());
+        replicaEventMessage.setStringProperty(ReplicaSupport.CUSTOMER_ID_PROPERTY, consumerId.toString());
+        replicaEventMessage.setByteProperty(ReplicaSupport.ACK_TYPE_PROPERTY, MessageAck.INDIVIDUAL_ACK_TYPE);
+        replicaEventMessage.setContent(event.getEventData());
+
+        listener.onMessage(replicaEventMessage);
+
+        assertThat(destinationStatistics.getDequeues().getCount()).isEqualTo(1);
+        assertThat(subscriptionStatistics.getDequeues().getCount()).isEqualTo(1);
+
+        verify(subscription).removePending(eq(message));
+        ArgumentCaptor<MessageAck> messageAckArgumentCaptor = ArgumentCaptor.forClass(MessageAck.class);
+        verify(destinationTopic).acknowledge(eq(connectionContext), eq(subscription), messageAckArgumentCaptor.capture(), eq(message));
+        MessageAck messageAck = messageAckArgumentCaptor.getValue();
+        assertThat(messageAck.getAckType()).isEqualTo(MessageAck.INDIVIDUAL_ACK_TYPE);
+
 
         verify(replicaEventMessage).acknowledge();
     }
@@ -325,7 +385,7 @@ public class ReplicaBrokerEventListenerTest {
     }
 
     @Test
-    public void canHandleEventOfType_ADD_CONSUMER() throws Exception {
+    public void canHandleEventOfType_ADD_DURABLE_CONSUMER() throws Exception {
         MessageId messageId = new MessageId("1:1");
         ConsumerInfo consumerInfo = new ConsumerInfo();
         consumerInfo.setDestination(testQueue);
@@ -333,12 +393,15 @@ public class ReplicaBrokerEventListenerTest {
         message.setMessageId(messageId);
         String clientId = "clientId";
         ReplicaEvent event = new ReplicaEvent()
-                .setEventType(ReplicaEventType.ADD_CONSUMER)
+                .setEventType(ReplicaEventType.ADD_DURABLE_CONSUMER)
                 .setEventData(eventSerializer.serializeReplicationData(consumerInfo))
                 .setReplicationProperty(ReplicaSupport.CLIENT_ID_PROPERTY, clientId);
         message.setContent(event.getEventData());
         message.setProperties(event.getReplicationProperties());
         message.setStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY, event.getEventType().name());
+
+        DurableTopicSubscription subscription = mock(DurableTopicSubscription.class);
+        when(broker.addConsumer(any(), any())).thenReturn(subscription);
 
         listener.onMessage(message);
 
@@ -349,54 +412,39 @@ public class ReplicaBrokerEventListenerTest {
         assertThat(value.getDestination()).isEqualTo(testQueue);
         ConnectionContext connectionContext = connectionContextArgumentCaptor.getValue();
         assertThat(connectionContext.getClientId()).isEqualTo(clientId);
+        verify(subscription).deactivate(true, 0);
         verify(message).acknowledge();
     }
 
     @Test
-    public void canHandleEventOfType_REMOVE_CONSUMER() throws Exception {
+    public void canHandleEventOfType_REMOVE_DURABLE_CONSUMER() throws Exception {
         MessageId messageId = new MessageId("1:1");
         ConsumerInfo consumerInfo = new ConsumerInfo();
         consumerInfo.setDestination(testQueue);
+        ConsumerId consumerId = new ConsumerId();
+        consumerId.setConnectionId("CONNECTION_ID");
+        consumerInfo.setConsumerId(consumerId);
         ActiveMQMessage message = spy(new ActiveMQMessage());
         message.setMessageId(messageId);
         String clientId = "clientId";
         ReplicaEvent event = new ReplicaEvent()
-                .setEventType(ReplicaEventType.REMOVE_CONSUMER)
-                .setEventData(eventSerializer.serializeReplicationData(consumerInfo))
-                .setReplicationProperty(ReplicaSupport.CLIENT_ID_PROPERTY, clientId);
+                .setEventType(ReplicaEventType.REMOVE_DURABLE_CONSUMER)
+                .setEventData(eventSerializer.serializeReplicationData(consumerInfo));
         message.setContent(event.getEventData());
         message.setProperties(event.getReplicationProperties());
         message.setStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY, event.getEventType().name());
 
+        DurableTopicSubscription subscription = mock(DurableTopicSubscription.class);
+        when(destinationQueue.getConsumers()).thenReturn(Collections.singletonList(subscription));
+        when(subscription.getConsumerInfo()).thenReturn(consumerInfo);
+        when(subscription.getContext()).thenReturn(connectionContext);
+
         listener.onMessage(message);
 
         ArgumentCaptor<ConsumerInfo> messageArgumentCaptor = ArgumentCaptor.forClass(ConsumerInfo.class);
-        ArgumentCaptor<ConnectionContext> connectionContextArgumentCaptor = ArgumentCaptor.forClass(ConnectionContext.class);
-        verify(broker).removeConsumer(connectionContextArgumentCaptor.capture(), messageArgumentCaptor.capture());
+        verify(broker).removeConsumer(any(), messageArgumentCaptor.capture());
         ConsumerInfo value = messageArgumentCaptor.getValue();
         assertThat(value.getDestination()).isEqualTo(testQueue);
-        ConnectionContext connectionContext = connectionContextArgumentCaptor.getValue();
-        assertThat(connectionContext.getClientId()).isEqualTo(clientId);
         verify(message).acknowledge();
-    }
-
-    @Test
-    @Ignore
-    public void canHandleEventOfType_SUBSCRIBER_REMOVED() {
-        var message = new ActiveMQMessage();
-
-        listener.onMessage(message);
-
-        assertThat(Boolean.TRUE).withFailMessage("Needs implementation").isFalse();
-    }
-
-    @Test
-    @Ignore
-    public void canHandleEventOfType_SUBSCRIBER_ADDED() {
-        var message = new ActiveMQMessage();
-
-        listener.onMessage(message);
-
-        assertThat(Boolean.TRUE).withFailMessage("Needs implementation").isFalse();
     }
 }

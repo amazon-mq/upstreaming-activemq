@@ -4,16 +4,17 @@ import org.apache.activemq.advisory.AdvisorySupport;
 import org.apache.activemq.broker.Broker;
 import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.broker.ConnectionContext;
-import org.apache.activemq.broker.ConsumerBrokerExchange;
 import org.apache.activemq.broker.ProducerBrokerExchange;
 import org.apache.activemq.broker.TransportConnector;
 import org.apache.activemq.broker.region.DestinationInterceptor;
+import org.apache.activemq.broker.region.DurableTopicSubscription;
 import org.apache.activemq.broker.region.IndirectMessageReference;
 import org.apache.activemq.broker.region.Queue;
 import org.apache.activemq.command.ActiveMQDestination;
 import org.apache.activemq.command.ActiveMQMessage;
 import org.apache.activemq.command.ActiveMQQueue;
 import org.apache.activemq.command.ConnectionId;
+import org.apache.activemq.command.ConsumerId;
 import org.apache.activemq.command.ConsumerInfo;
 import org.apache.activemq.command.LocalTransactionId;
 import org.apache.activemq.command.ActiveMQTopic;
@@ -198,11 +199,14 @@ public class ReplicaSourceBrokerTest {
     }
 
     @Test
-    public void replicates_ADD_CONSUMER() throws Exception {
+    public void replicates_ADD_DURABLE_CONSUMER() throws Exception {
         source.start();
 
+        ActiveMQTopic destination = new ActiveMQTopic("TEST.TOPIC");
+
         ConsumerInfo message = new ConsumerInfo();
-        message.setDestination(testDestination);
+        message.setDestination(destination);
+        message.setSubscriptionName("SUBSCRIPTION_NAME");
 
         source.addConsumer(connectionContext, message);
 
@@ -212,19 +216,22 @@ public class ReplicaSourceBrokerTest {
 
         assertThat(replicaMessage.getType()).isEqualTo("ReplicaEvent");
         assertThat(replicaMessage.getDestination().getPhysicalName()).isEqualTo(ReplicaSupport.REPLICATION_QUEUE_NAME);
-        assertThat(replicaMessage.getProperty(ReplicaEventType.EVENT_TYPE_PROPERTY)).isEqualTo(ReplicaEventType.ADD_CONSUMER.name());
+        assertThat(replicaMessage.getProperty(ReplicaEventType.EVENT_TYPE_PROPERTY)).isEqualTo(ReplicaEventType.ADD_DURABLE_CONSUMER.name());
 
         final ConsumerInfo ackMessage = (ConsumerInfo) eventSerializer.deserializeMessageData(replicaMessage.getContent());
-        assertThat(ackMessage.getDestination()).isEqualTo(testDestination);
+        assertThat(ackMessage.getDestination()).isEqualTo(destination);
         verifyConnectionContext(connectionContext);
     }
 
     @Test
-    public void replicates_REMOVE_CONSUMER() throws Exception {
+    public void replicates_REMOVE_DURABLE_CONSUMER() throws Exception {
         source.start();
 
+        ActiveMQTopic destination = new ActiveMQTopic("TEST.TOPIC");
+
         ConsumerInfo message = new ConsumerInfo();
-        message.setDestination(testDestination);
+        message.setDestination(destination);
+        message.setSubscriptionName("SUBSCRIPTION_NAME");
 
         source.removeConsumer(connectionContext, message);
 
@@ -234,10 +241,10 @@ public class ReplicaSourceBrokerTest {
 
         assertThat(replicaMessage.getType()).isEqualTo("ReplicaEvent");
         assertThat(replicaMessage.getDestination().getPhysicalName()).isEqualTo(ReplicaSupport.REPLICATION_QUEUE_NAME);
-        assertThat(replicaMessage.getProperty(ReplicaEventType.EVENT_TYPE_PROPERTY)).isEqualTo(ReplicaEventType.REMOVE_CONSUMER.name());
+        assertThat(replicaMessage.getProperty(ReplicaEventType.EVENT_TYPE_PROPERTY)).isEqualTo(ReplicaEventType.REMOVE_DURABLE_CONSUMER.name());
 
         final ConsumerInfo ackMessage = (ConsumerInfo) eventSerializer.deserializeMessageData(replicaMessage.getContent());
-        assertThat(ackMessage.getDestination()).isEqualTo(testDestination);
+        assertThat(ackMessage.getDestination()).isEqualTo(destination);
         verifyConnectionContext(connectionContext);
     }
 
@@ -287,12 +294,6 @@ public class ReplicaSourceBrokerTest {
         ProducerInfo producerInfo = new ProducerInfo();
         producerInfo.setDestination(testDestination);
         source.addProducer(connectionContext, producerInfo);
-    }
-
-    @Test
-    @Ignore
-    public void replicates_ADD_ONE_TEST_FOR_EACH_TYPE_OF_REPLICATED_EVENT() {
-        fail("Implement me");
     }
 
     @Test
@@ -353,6 +354,44 @@ public class ReplicaSourceBrokerTest {
 
         verify(connectionContext, never()).isProducerFlowControl();
         verify(connectionContext, never()).setProducerFlowControl(anyBoolean());
+    }
+
+    @Test
+    public void replicates_TOPIC_MESSAGE_ACK() throws Exception {
+        source.start();
+
+        ActiveMQTopic destination = new ActiveMQTopic("TEST.TOPIC");
+
+        MessageId messageId = new MessageId("1:1");
+
+        MessageAck messageAck = new MessageAck();
+        messageAck.setMessageID(messageId);
+        messageAck.setDestination(destination);
+        messageAck.setAckType(MessageAck.INDIVIDUAL_ACK_TYPE);
+
+        ActiveMQMessage message = new ActiveMQMessage();
+        message.setMessageId(messageId);
+        message.setDestination(destination);
+
+        DurableTopicSubscription subscription = mock(DurableTopicSubscription.class);
+        ConsumerInfo consumerInfo = new ConsumerInfo();
+        ConsumerId consumerId = new ConsumerId();
+        consumerId.setConnectionId("CONNECTION_ID");
+        consumerInfo.setConsumerId(consumerId);
+        when(subscription.getConsumerInfo()).thenReturn(consumerInfo);
+
+        source.onAck(connectionContext, subscription, messageAck, message);
+
+        ArgumentCaptor<ActiveMQMessage> sendMessageArgumentCaptor = ArgumentCaptor.forClass(ActiveMQMessage.class);
+        verify(broker, times(1)).send(any(), sendMessageArgumentCaptor.capture());
+        ActiveMQMessage replicationMessage = sendMessageArgumentCaptor.getValue();
+        final ActiveMQMessage originalMessage = (ActiveMQMessage) eventSerializer.deserializeMessageData(replicationMessage.getContent());
+        assertThat(replicationMessage.getProperty(ReplicaEventType.EVENT_TYPE_PROPERTY)).isEqualTo(ReplicaEventType.TOPIC_MESSAGE_ACK.name());
+        assertThat(originalMessage.getMessageId()).isEqualTo(messageId);
+        assertThat(originalMessage.getDestination()).isEqualTo(destination);
+        assertThat(replicationMessage.getProperty(ReplicaSupport.CUSTOMER_ID_PROPERTY)).isEqualTo(consumerId.toString());
+        assertThat(replicationMessage.getProperty(ReplicaSupport.ACK_TYPE_PROPERTY)).isEqualTo(messageAck.getAckType());
+        verifyConnectionContext(connectionContext);
     }
 
     @Test

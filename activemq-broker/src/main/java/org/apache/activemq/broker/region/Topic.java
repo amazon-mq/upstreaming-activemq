@@ -92,6 +92,8 @@ public class Topic extends BaseDestination implements Task {
         }
     };
 
+    private final List<TopicListener> listeners = new ArrayList<>();
+
     public Topic(BrokerService brokerService, ActiveMQDestination destination, TopicMessageStore store,
             DestinationStatistics parentStats, TaskRunnerFactory taskFactory) throws Exception {
         super(brokerService, store, destination, parentStats);
@@ -608,6 +610,13 @@ public class Topic extends BaseDestination implements Task {
             }
         }
         messageConsumed(context, node);
+        fireAck(context, sub, ack, node);
+    }
+
+    private void fireAck(ConnectionContext context, Subscription sub, MessageAck ack, MessageReference node) {
+        for (TopicListener listener : listeners) {
+            listener.onAck(context, sub, ack, node);
+        }
     }
 
     @Override
@@ -908,5 +917,13 @@ public class Topic extends BaseDestination implements Task {
 
     public Map<SubscriptionKey, DurableTopicSubscription> getDurableTopicSubs() {
         return durableSubscribers;
+    }
+
+    public void addListener(TopicListener listener) {
+        listeners.add(listener);
+    }
+
+    public List<TopicListener> getListeners() {
+        return List.copyOf(listeners);
     }
 }
