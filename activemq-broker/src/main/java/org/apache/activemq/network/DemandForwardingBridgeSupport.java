@@ -87,6 +87,7 @@ import org.apache.activemq.command.SubscriptionInfo;
 import org.apache.activemq.command.WireFormatInfo;
 import org.apache.activemq.filter.DestinationFilter;
 import org.apache.activemq.filter.NonCachedMessageEvaluationContext;
+import org.apache.activemq.replica.ReplicaSupport;
 import org.apache.activemq.security.SecurityContext;
 import org.apache.activemq.transport.DefaultTransportListener;
 import org.apache.activemq.transport.FutureResponse;
@@ -1566,6 +1567,10 @@ public abstract class DemandForwardingBridgeSupport implements NetworkBridge, Br
     }
 
     protected DemandSubscription doCreateDemandSubscription(ConsumerInfo info) throws IOException {
+        if (ReplicaSupport.REPLICATION_QUEUE_NAME.equals(info.getDestination().getPhysicalName())) {
+            return null;
+        }
+
         DemandSubscription result = new DemandSubscription(info);
         result.getLocalInfo().setConsumerId(new ConsumerId(localSessionInfo.getSessionId(), consumerIdGenerator.getNextSequenceId()));
         if (info.getDestination().isTemporary()) {
