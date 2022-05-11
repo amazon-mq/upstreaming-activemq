@@ -3,6 +3,7 @@ package org.apache.activemq.replica;
 import org.apache.activemq.command.DataStructure;
 import org.apache.activemq.command.Message;
 import org.apache.activemq.openwire.OpenWireFormat;
+import org.apache.activemq.openwire.OpenWireFormatFactory;
 import org.apache.activemq.util.ByteSequence;
 import org.apache.activemq.util.ByteSequenceData;
 import org.apache.activemq.util.IOExceptionSupport;
@@ -11,7 +12,7 @@ import java.io.IOException;
 
 public class ReplicaEventSerializer {
 
-    private final WireFormat wireFormat = new OpenWireFormat();
+    private final WireFormat wireFormat = new OpenWireFormatFactory().createWireFormat();
 
     byte[] serializeReplicationData(final DataStructure object) throws IOException {
         try {
