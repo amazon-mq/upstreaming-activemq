@@ -1,6 +1,7 @@
 package org.apache.activemq.broker.replica;
 
 import org.apache.activemq.ActiveMQConnectionFactory;
+import org.apache.activemq.ActiveMQXAConnectionFactory;
 import org.apache.activemq.AutoFailTestSupport;
 import org.apache.activemq.broker.BrokerPlugin;
 import org.apache.activemq.broker.BrokerService;
@@ -29,6 +30,9 @@ public class ReplicaPluginTestSupport extends AutoFailTestSupport {
     protected ConnectionFactory firstBrokerConnectionFactory;
     protected ConnectionFactory secondBrokerConnectionFactory;
 
+    protected ActiveMQXAConnectionFactory firstBrokerXAConnectionFactory;
+    protected ActiveMQXAConnectionFactory secondBrokerXAConnectionFactory;
+
     protected ActiveMQDestination destination;
 
     @Override
@@ -43,8 +47,11 @@ public class ReplicaPluginTestSupport extends AutoFailTestSupport {
         startFirstBroker();
         startSecondBroker();
 
-        firstBrokerConnectionFactory = createFirstBrokerConnectionFactory();
-        secondBrokerConnectionFactory = createSecondBrokerConnectionFactory();
+        firstBrokerConnectionFactory = new ActiveMQConnectionFactory(firstBindAddress);
+        secondBrokerConnectionFactory = new ActiveMQConnectionFactory(secondBindAddress);
+
+        firstBrokerXAConnectionFactory = new ActiveMQXAConnectionFactory(firstBindAddress);
+        secondBrokerXAConnectionFactory = new ActiveMQXAConnectionFactory(secondBindAddress);
 
         destination = createDestination();
     }
@@ -67,8 +74,8 @@ public class ReplicaPluginTestSupport extends AutoFailTestSupport {
 
     protected BrokerService createFirstBroker() throws Exception {
         BrokerService answer = new BrokerService();
-        answer.setUseJmx(false);
-        answer.setPersistent(true);
+        answer.setUseJmx(true);
+        answer.setPersistent(false);
         answer.getManagementContext().setCreateConnector(false);
         answer.addConnector(firstBindAddress);
         answer.setDataDirectory(FIRST_KAHADB_DIRECTORY);
@@ -84,8 +91,8 @@ public class ReplicaPluginTestSupport extends AutoFailTestSupport {
 
     protected BrokerService createSecondBroker() throws Exception {
         BrokerService answer = new BrokerService();
-        answer.setUseJmx(false);
-        answer.setPersistent(true);
+        answer.setUseJmx(true);
+        answer.setPersistent(false);
         answer.getManagementContext().setCreateConnector(false);
         answer.addConnector(secondBindAddress);
         answer.setDataDirectory(SECOND_KAHADB_DIRECTORY);
@@ -105,14 +112,6 @@ public class ReplicaPluginTestSupport extends AutoFailTestSupport {
 
     protected void startSecondBroker() throws Exception {
         secondBroker.start();
-    }
-
-    protected ConnectionFactory createFirstBrokerConnectionFactory() {
-        return new ActiveMQConnectionFactory(firstBindAddress);
-    }
-
-    protected ConnectionFactory createSecondBrokerConnectionFactory() {
-        return new ActiveMQConnectionFactory(secondBindAddress);
     }
 
     protected ActiveMQDestination createDestination() {
