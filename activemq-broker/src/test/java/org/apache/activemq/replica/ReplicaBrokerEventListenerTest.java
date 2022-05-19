@@ -181,9 +181,8 @@ public class ReplicaBrokerEventListenerTest {
         message.setDestination(testTopic);
 
         ConsumerInfo consumerInfo = new ConsumerInfo();
-        ConsumerId consumerId = new ConsumerId();
-        consumerId.setConnectionId("CONNECTION_ID");
-        consumerInfo.setConsumerId(consumerId);
+        String clientId = "CLIENT_ID";
+        consumerInfo.setClientId(clientId);
 
         SubscriptionStatistics subscriptionStatistics = new SubscriptionStatistics();
         subscriptionStatistics.setEnabled(true);
@@ -204,7 +203,7 @@ public class ReplicaBrokerEventListenerTest {
         ActiveMQMessage replicaEventMessage = spy(new ActiveMQMessage());
         replicaEventMessage.setType("ReplicaEvent");
         replicaEventMessage.setStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY, event.getEventType().name());
-        replicaEventMessage.setStringProperty(ReplicaSupport.CUSTOMER_ID_PROPERTY, consumerId.toString());
+        replicaEventMessage.setStringProperty(ReplicaSupport.CLIENT_ID_PROPERTY, clientId);
         replicaEventMessage.setByteProperty(ReplicaSupport.ACK_TYPE_PROPERTY, MessageAck.INDIVIDUAL_ACK_TYPE);
         replicaEventMessage.setContent(event.getEventData());
 

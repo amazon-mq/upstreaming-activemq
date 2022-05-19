@@ -12,8 +12,15 @@ import org.apache.activemq.replica.ReplicaPlugin;
 import org.apache.activemq.replica.ReplicaRole;
 
 import javax.jms.ConnectionFactory;
+import javax.transaction.xa.Xid;
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
 
-public class ReplicaPluginTestSupport extends AutoFailTestSupport {
+public abstract class ReplicaPluginTestSupport extends AutoFailTestSupport {
+
+    protected static final int LONG_TIMEOUT = 10000;
+    protected static final int SHORT_TIMEOUT = 1000;
 
     private static final String FIRST_KAHADB_DIRECTORY = "target/activemq-data/first/";
     private static final String SECOND_KAHADB_DIRECTORY = "target/activemq-data/second/";
@@ -34,6 +41,8 @@ public class ReplicaPluginTestSupport extends AutoFailTestSupport {
     protected ActiveMQXAConnectionFactory secondBrokerXAConnectionFactory;
 
     protected ActiveMQDestination destination;
+
+    private static long txGenerator = 67;
 
     @Override
     protected void setUp() throws Exception {
@@ -128,5 +137,31 @@ public class ReplicaPluginTestSupport extends AutoFailTestSupport {
 
     protected String getDestinationString() {
         return getClass().getName() + "." + getName();
+    }
+
+    protected Xid createXid() throws IOException {
+
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        DataOutputStream os = new DataOutputStream(baos);
+        os.writeLong(++txGenerator);
+        os.close();
+        final byte[] bs = baos.toByteArray();
+
+        return new Xid() {
+
+            public int getFormatId() {
+                return 86;
+            }
+
+
+            public byte[] getGlobalTransactionId() {
+                return bs;
+            }
+
+
+            public byte[] getBranchQualifier() {
+                return bs;
+            }
+        };
     }
 }

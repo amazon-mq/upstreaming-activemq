@@ -677,7 +677,7 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener, 
                     new ReplicaEvent()
                             .setEventType(ReplicaEventType.TOPIC_MESSAGE_ACK)
                             .setEventData(eventSerializer.serializeReplicationData(node.getMessage()))
-                            .setReplicationProperty(ReplicaSupport.CUSTOMER_ID_PROPERTY, sub.getConsumerInfo().getConsumerId().toString())
+                            .setReplicationProperty(ReplicaSupport.CLIENT_ID_PROPERTY, sub.getConsumerInfo().getClientId())
                             .setReplicationProperty(ReplicaSupport.ACK_TYPE_PROPERTY, ack.getAckType())
             );
         } catch (Exception e) {

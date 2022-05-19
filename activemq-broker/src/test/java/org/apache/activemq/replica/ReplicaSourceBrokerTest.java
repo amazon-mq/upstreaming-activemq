@@ -375,9 +375,8 @@ public class ReplicaSourceBrokerTest {
 
         DurableTopicSubscription subscription = mock(DurableTopicSubscription.class);
         ConsumerInfo consumerInfo = new ConsumerInfo();
-        ConsumerId consumerId = new ConsumerId();
-        consumerId.setConnectionId("CONNECTION_ID");
-        consumerInfo.setConsumerId(consumerId);
+        String clientId = "CLIENT_ID";
+        consumerInfo.setClientId(clientId);
         when(subscription.getConsumerInfo()).thenReturn(consumerInfo);
 
         source.onAck(connectionContext, subscription, messageAck, message);
@@ -389,7 +388,7 @@ public class ReplicaSourceBrokerTest {
         assertThat(replicationMessage.getProperty(ReplicaEventType.EVENT_TYPE_PROPERTY)).isEqualTo(ReplicaEventType.TOPIC_MESSAGE_ACK.name());
         assertThat(originalMessage.getMessageId()).isEqualTo(messageId);
         assertThat(originalMessage.getDestination()).isEqualTo(destination);
-        assertThat(replicationMessage.getProperty(ReplicaSupport.CUSTOMER_ID_PROPERTY)).isEqualTo(consumerId.toString());
+        assertThat(replicationMessage.getProperty(ReplicaSupport.CLIENT_ID_PROPERTY)).isEqualTo(clientId);
         assertThat(replicationMessage.getProperty(ReplicaSupport.ACK_TYPE_PROPERTY)).isEqualTo(messageAck.getAckType());
         verifyConnectionContext(connectionContext);
     }

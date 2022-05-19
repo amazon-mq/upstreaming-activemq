@@ -66,7 +66,7 @@ public class ReplicaBrokerEventListener implements MessageListener {
                         logger.trace("Processing replicated topic message ack");
                         try {
                             consumeTopicAck((org.apache.activemq.command.Message) deserializedData,
-                                    message.getStringProperty(ReplicaSupport.CUSTOMER_ID_PROPERTY),
+                                    message.getStringProperty(ReplicaSupport.CLIENT_ID_PROPERTY),
                                     message.getByteProperty(ReplicaSupport.ACK_TYPE_PROPERTY));
                         } catch (JMSException e) {
                             logger.error("Failed to extract property to replicate topic message ack [{}]", deserializedData, e);
@@ -165,10 +165,10 @@ public class ReplicaBrokerEventListener implements MessageListener {
         }
     }
 
-    private void consumeTopicAck(org.apache.activemq.command.Message message, String customerId, byte ackType) {
+    private void consumeTopicAck(org.apache.activemq.command.Message message, String clientId, byte ackType) {
         try {
             Topic topic = broker.getDestinations(message.getDestination()).stream().findFirst().map(DestinationExtractor::extractTopic).orElseThrow();
-            DurableTopicSubscription subscription = topic.getConsumers().stream().filter(c -> c.getConsumerInfo().getConsumerId().toString().equals(customerId))
+            DurableTopicSubscription subscription = topic.getConsumers().stream().filter(c -> c.getConsumerInfo().getClientId().equals(clientId))
                     .findFirst().filter(DurableTopicSubscription.class::isInstance).map(DurableTopicSubscription.class::cast)
                     .orElseThrow();
 
@@ -306,10 +306,11 @@ public class ReplicaBrokerEventListener implements MessageListener {
                     .findFirst()
                     .map(Destination::getConsumers)
                     .stream().flatMap(Collection::stream)
-                    .filter(v -> v.getConsumerInfo().getConsumerId().equals(consumerInfo.getConsumerId()))
+                    .filter(v -> v.getConsumerInfo().getClientId().equals(consumerInfo.getClientId()))
                     .findFirst()
-                    .map(Subscription::getContext).orElseThrow();
-            if (!ReplicaSupport.REPLICATION_PLUGIN_USER_NAME.equals(context.getUserName())) {
+                    .map(Subscription::getContext)
+                    .orElse(null);
+            if (context == null || !ReplicaSupport.REPLICATION_PLUGIN_USER_NAME.equals(context.getUserName())) {
                 // a real consumer had stolen the context before we got the message
                 return;
             }
