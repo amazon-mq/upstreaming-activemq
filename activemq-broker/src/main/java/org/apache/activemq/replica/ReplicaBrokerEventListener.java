@@ -188,7 +188,8 @@ public class ReplicaBrokerEventListener implements MessageListener {
 
     private void messageExpired(ActiveMQMessage message) {
         try {
-            Destination destination = broker.getDestinations(message.getDestination()).stream().findFirst().orElseThrow();
+            Destination destination = broker.getDestinations(message.getDestination()).stream()
+                    .findFirst().map(DestinationExtractor::extractBaseDestination).orElseThrow();
             message.setRegionDestination(destination);
             broker.messageExpired(connectionContext, message, null);
         } catch (Exception e) {
