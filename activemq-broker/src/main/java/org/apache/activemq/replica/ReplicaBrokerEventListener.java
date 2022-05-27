@@ -71,10 +71,6 @@ public class ReplicaBrokerEventListener implements MessageListener {
                         } catch (JMSException e) {
                             logger.error("Failed to extract property to replicate topic message ack [{}]", deserializedData, e);
                         }
-                    case MESSAGE_EXPIRED:
-                        logger.trace("Processing replicated message expired");
-                        messageExpired((ActiveMQMessage) deserializedData);
-                        return;
                     case MESSAGES_DROPPED:
                         logger.trace("Processing replicated messages dropped");
                         try {
@@ -183,17 +179,6 @@ public class ReplicaBrokerEventListener implements MessageListener {
             topic.acknowledge(connectionContext, subscription, messageAck, message);
         } catch (Exception e) {
             logger.error("Failed to process ack with last message id: {}", message.getMessageId(), e);
-        }
-    }
-
-    private void messageExpired(ActiveMQMessage message) {
-        try {
-            Destination destination = broker.getDestinations(message.getDestination()).stream()
-                    .findFirst().map(DestinationExtractor::extractBaseDestination).orElseThrow();
-            message.setRegionDestination(destination);
-            broker.messageExpired(connectionContext, message, null);
-        } catch (Exception e) {
-            logger.error("Unable to replicate message expired [{}]", message.getMessageId(), e);
         }
     }
 

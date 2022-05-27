@@ -303,23 +303,6 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener, 
         }
     }
 
-    private void replicateMessageExpired(ConnectionContext context, MessageReference reference) {
-        Message message = reference.getMessage();
-        if (!isReplicatedDestination(message.getDestination())) {
-            return;
-        }
-        try {
-            enqueueReplicaEvent(
-                context,
-                new ReplicaEvent()
-                        .setEventType(ReplicaEventType.MESSAGE_EXPIRED)
-                        .setEventData(eventSerializer.serializeReplicationData(message))
-            );
-        } catch (Exception e) {
-            logger.error("Failed to replicate discard of {}", reference.getMessageId(), e);
-        }
-    }
-
     @Override
     public Set<Destination> getDestinations(ActiveMQDestination destination) {
         return super.getDestinations(destination);
@@ -561,12 +544,6 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener, 
     @Override
     public void removeDestinationInfo(ConnectionContext context, DestinationInfo info) throws Exception {
         super.removeDestinationInfo(context, info);
-    }
-
-    @Override
-    public void messageExpired(ConnectionContext context, MessageReference message, Subscription subscription) {
-        super.messageExpired(context, message, subscription);
-        replicateMessageExpired(context, message);
     }
 
     @Override

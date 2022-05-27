@@ -358,32 +358,6 @@ public class ReplicaBrokerEventListenerTest {
     }
 
     @Test
-    public void canHandleEventOfType_MESSAGE_EXPIRED() throws Exception {
-        MessageId messageId = new MessageId("1:1:1:1");
-        ActiveMQMessage message = new ActiveMQMessage();
-        message.setMessageId(messageId);
-        message.setDestination(testQueue);
-        ReplicaEvent event = new ReplicaEvent()
-            .setEventType(ReplicaEventType.MESSAGE_EXPIRED)
-            .setEventData(eventSerializer.serializeReplicationData(message));
-        ActiveMQMessage replicaEventMessage = spy(new ActiveMQMessage());
-        replicaEventMessage.setType("ReplicaEvent");
-        replicaEventMessage.setStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY, event.getEventType().name());
-        replicaEventMessage.setContent(event.getEventData());
-
-        listener.onMessage(replicaEventMessage);
-
-        ArgumentCaptor<MessageReference> messageArgumentCaptor = ArgumentCaptor.forClass(MessageReference.class);
-        verify(broker).messageExpired(any(), messageArgumentCaptor.capture(), any());
-
-        MessageReference value = messageArgumentCaptor.getValue();
-        assertThat(value.getMessageId()).isEqualTo(messageId);
-        assertThat(value.getRegionDestination()).isEqualTo(destinationQueue);
-
-        verify(replicaEventMessage).acknowledge();
-    }
-
-    @Test
     public void canHandleEventOfType_ADD_DURABLE_CONSUMER() throws Exception {
         MessageId messageId = new MessageId("1:1");
         ConsumerInfo consumerInfo = new ConsumerInfo();
