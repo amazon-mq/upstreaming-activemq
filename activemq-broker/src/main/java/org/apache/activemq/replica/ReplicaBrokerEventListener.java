@@ -71,6 +71,7 @@ public class ReplicaBrokerEventListener implements MessageListener {
                         } catch (JMSException e) {
                             logger.error("Failed to extract property to replicate topic message ack [{}]", deserializedData, e);
                         }
+                        return;
                     case MESSAGES_DROPPED:
                         logger.trace("Processing replicated messages dropped");
                         try {

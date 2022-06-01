@@ -379,7 +379,7 @@ public class ReplicaSourceBrokerTest {
         consumerInfo.setClientId(clientId);
         when(subscription.getConsumerInfo()).thenReturn(consumerInfo);
 
-        source.onAck(connectionContext, subscription, messageAck, message);
+        source.topicMessageAcknowledged(connectionContext, subscription, messageAck, message);
 
         ArgumentCaptor<ActiveMQMessage> sendMessageArgumentCaptor = ArgumentCaptor.forClass(ActiveMQMessage.class);
         verify(broker, times(1)).send(any(), sendMessageArgumentCaptor.capture());
@@ -485,29 +485,6 @@ public class ReplicaSourceBrokerTest {
     }
 
     @Test
-    public void addsListenerToQueueOnAddDestination() throws Exception {
-        source.start();
-
-        Queue queue = mock(Queue.class);
-        when(broker.addDestination(connectionContext, testDestination, true)).thenReturn(queue);
-
-        source.addDestination(connectionContext, testDestination, true);
-
-        ArgumentCaptor<ActiveMQDestination> destinationArgumentCaptor = ArgumentCaptor.forClass(ActiveMQDestination.class);
-        verify(broker, times(2)).addDestination(eq(connectionContext), destinationArgumentCaptor.capture(), anyBoolean());
-
-        List<ActiveMQDestination> destinations = destinationArgumentCaptor.getAllValues();
-
-        ActiveMQDestination replicationDestination = destinations.get(0);
-        assertThat(replicationDestination.getPhysicalName()).isEqualTo(ReplicaSupport.REPLICATION_QUEUE_NAME);
-
-        ActiveMQDestination destination = destinations.get(1);
-        assertThat(destination).isEqualTo(testDestination);
-
-        verify(queue).addListener(source);
-    }
-
-    @Test
     public void replicates_MESSAGE_DROPPED() throws Exception {
         source.start();
 
@@ -517,7 +494,7 @@ public class ReplicaSourceBrokerTest {
         message.setDestination(testDestination);
 
         IndirectMessageReference messageReference = new IndirectMessageReference(message);
-        source.onDropMessage(connectionContext, messageReference);
+        source.queueMessageDropped(connectionContext, messageReference);
 
         assertThat(source.dropMessages).contains(messageReference);
 

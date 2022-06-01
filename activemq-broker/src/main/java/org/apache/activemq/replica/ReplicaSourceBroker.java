@@ -11,12 +11,8 @@ import org.apache.activemq.broker.TransportConnector;
 import org.apache.activemq.broker.region.Destination;
 import org.apache.activemq.broker.region.IndirectMessageReference;
 import org.apache.activemq.broker.region.MessageReference;
-import org.apache.activemq.broker.region.Queue;
-import org.apache.activemq.broker.region.QueueListener;
 import org.apache.activemq.broker.region.QueueMessageReference;
 import org.apache.activemq.broker.region.Subscription;
-import org.apache.activemq.broker.region.Topic;
-import org.apache.activemq.broker.region.TopicListener;
 import org.apache.activemq.broker.region.cursors.OrderedPendingList;
 import org.apache.activemq.broker.region.cursors.PendingList;
 import org.apache.activemq.broker.region.virtual.VirtualDestination;
@@ -59,7 +55,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
-public class ReplicaSourceBroker extends BrokerFilter implements QueueListener, TopicListener, Task {
+public class ReplicaSourceBroker extends BrokerFilter implements Task {
 
     private static final Logger logger = LoggerFactory.getLogger(ReplicaSourceBroker.class);
     private static final DestinationMapEntry<Boolean> IS_REPLICATED = new DestinationMapEntry<>() {}; // used in destination map to indicate mirrored status
@@ -452,7 +448,7 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener, 
             super.send(producerExchange, messageSend);
         } catch (Exception e) {
             if (destination.isQueue()) {
-                onDropMessage(producerExchange.getConnectionContext(), new IndirectMessageReference(messageSend));
+                queueMessageDropped(producerExchange.getConnectionContext(), new IndirectMessageReference(messageSend));
             }
             if (destination.isTopic()) {
                 // TODO have correct handling of durable subscribers if there is such a situation
@@ -484,18 +480,6 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener, 
         Destination newDestination = super.addDestination(context, destination, createIfTemporary);
         if (shouldReplicateDestination(destination)) {
             replicateDestinationCreation(context, destination);
-            if (destination.isQueue()) {
-                Queue queue = DestinationExtractor.extractQueue(newDestination);
-                if (queue != null && !queue.getListeners().contains(this)) {
-                    queue.addListener(this);
-                }
-            }
-            if (destination.isTopic()) {
-                Topic topic = DestinationExtractor.extractTopic(newDestination);
-                if (topic != null && !topic.getListeners().contains(this)) {
-                    topic.addListener(this);
-                }
-            }
         }
         return newDestination;
     }
@@ -568,7 +552,7 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener, 
     }
 
     @Override
-    public void onDropMessage(ConnectionContext context, QueueMessageReference reference) {
+    public void queueMessageDropped(ConnectionContext context, QueueMessageReference reference) {
         if (isReplicaContext(context)) {
             return;
         }
@@ -647,7 +631,7 @@ public class ReplicaSourceBroker extends BrokerFilter implements QueueListener, 
     }
 
     @Override
-    public void onAck(ConnectionContext context, Subscription sub, MessageAck ack, MessageReference node) {
+    public void topicMessageAcknowledged(ConnectionContext context, Subscription sub, MessageAck ack, MessageReference node) {
         try {
             enqueueReplicaEvent(
                     context,

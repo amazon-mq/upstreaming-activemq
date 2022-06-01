@@ -24,6 +24,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import org.apache.activemq.Service;
 import org.apache.activemq.broker.region.Destination;
 import org.apache.activemq.broker.region.MessageReference;
+import org.apache.activemq.broker.region.QueueMessageReference;
 import org.apache.activemq.broker.region.Region;
 import org.apache.activemq.broker.region.Subscription;
 import org.apache.activemq.broker.region.virtual.VirtualDestination;
@@ -32,6 +33,7 @@ import org.apache.activemq.command.BrokerId;
 import org.apache.activemq.command.BrokerInfo;
 import org.apache.activemq.command.ConnectionInfo;
 import org.apache.activemq.command.DestinationInfo;
+import org.apache.activemq.command.MessageAck;
 import org.apache.activemq.command.MessageDispatch;
 import org.apache.activemq.command.ProducerInfo;
 import org.apache.activemq.command.SessionInfo;
@@ -404,5 +406,8 @@ public interface Broker extends Region, Service {
 
     void networkBridgeStopped(BrokerInfo brokerInfo);
 
+    void queueMessageDropped(ConnectionContext context, QueueMessageReference reference);
+
+    void topicMessageAcknowledged(ConnectionContext context, Subscription sub, MessageAck ack, MessageReference node);
 
 }

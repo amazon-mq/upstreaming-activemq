@@ -174,7 +174,7 @@ public class ReplicaBrokerEventListenerTest {
     }
 
     @Test
-    public void canHandleEventOfType_MESSAGE_ACK() throws Exception {
+    public void canHandleEventOfType_TOPIC_MESSAGE_ACK() throws Exception {
         MessageId messageId = new MessageId("1:1:1:1");
         ActiveMQMessage message = new ActiveMQMessage();
         message.setMessageId(messageId);
@@ -217,7 +217,6 @@ public class ReplicaBrokerEventListenerTest {
         verify(destinationTopic).acknowledge(eq(connectionContext), eq(subscription), messageAckArgumentCaptor.capture(), eq(message));
         MessageAck messageAck = messageAckArgumentCaptor.getValue();
         assertThat(messageAck.getAckType()).isEqualTo(MessageAck.INDIVIDUAL_ACK_TYPE);
-
 
         verify(replicaEventMessage).acknowledge();
     }
@@ -394,12 +393,10 @@ public class ReplicaBrokerEventListenerTest {
         MessageId messageId = new MessageId("1:1");
         ConsumerInfo consumerInfo = new ConsumerInfo();
         consumerInfo.setDestination(testQueue);
-        ConsumerId consumerId = new ConsumerId();
-        consumerId.setConnectionId("CONNECTION_ID");
-        consumerInfo.setConsumerId(consumerId);
         ActiveMQMessage message = spy(new ActiveMQMessage());
         message.setMessageId(messageId);
         String clientId = "clientId";
+        consumerInfo.setClientId(clientId);
         ReplicaEvent event = new ReplicaEvent()
                 .setEventType(ReplicaEventType.REMOVE_DURABLE_CONSUMER)
                 .setEventData(eventSerializer.serializeReplicationData(consumerInfo));
