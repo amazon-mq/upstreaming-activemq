@@ -124,10 +124,12 @@ public class ReplicaSourceBroker extends BrokerFilter implements Task {
     private boolean shouldReplicateDestination(ActiveMQDestination destination) {
         boolean isReplicationQueue = isReplicationQueue(destination);
         boolean isAdvisoryDestination = isAdvisoryDestination(destination);
-        boolean shouldReplicate = !isReplicationQueue && !isAdvisoryDestination;
+        boolean isTemporaryDestination = destination.isTemporary();
+        boolean shouldReplicate = !isReplicationQueue && !isAdvisoryDestination && !isTemporaryDestination;
         String reason = shouldReplicate ? "" : " because ";
         if (isReplicationQueue) reason += "it is a replication queue";
         if (isAdvisoryDestination) reason += "it is an advisory destination";
+        if (isTemporaryDestination) reason += "it is a temporary destination";
         logger.debug("Will {}replicate destination {}{}", shouldReplicate ? "": "not ", destination, reason);
         return shouldReplicate;
     }
@@ -190,6 +192,9 @@ public class ReplicaSourceBroker extends BrokerFilter implements Task {
 
     private void replicateSend(ProducerBrokerExchange context, Message message, ActiveMQDestination destination) {
         if (isReplicationQueue(message.getDestination())) {
+            return;
+        }
+        if (destination.isTemporary()) {
             return;
         }
         if (message.isAdvisory()) {  // TODO: only replicate what we care about
