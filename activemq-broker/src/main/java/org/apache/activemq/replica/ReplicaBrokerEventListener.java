@@ -1,5 +1,6 @@
 package org.apache.activemq.replica;
 
+import org.apache.activemq.ScheduledMessage;
 import org.apache.activemq.broker.Broker;
 import org.apache.activemq.broker.ConnectionContext;
 import org.apache.activemq.broker.region.Destination;
@@ -11,7 +12,6 @@ import org.apache.activemq.broker.region.Subscription;
 import org.apache.activemq.broker.region.Topic;
 import org.apache.activemq.command.ActiveMQDestination;
 import org.apache.activemq.command.ActiveMQMessage;
-import org.apache.activemq.command.ActiveMQTopic;
 import org.apache.activemq.command.ConsumerInfo;
 import org.apache.activemq.command.MessageAck;
 import org.apache.activemq.command.TransactionId;
@@ -156,10 +156,18 @@ public class ReplicaBrokerEventListener implements MessageListener {
 
     private void persistMessage(ActiveMQMessage message) {
         try {
+            removeScheduledMessageProperties(message);
             replicaInternalMessageProducer.produceToReplicaQueue(message);
         } catch (Exception e) {
             logger.error("Failed to process message {} with JMS message id: {}", message.getMessageId(), message.getJMSMessageID(), e);
         }
+    }
+
+    private void removeScheduledMessageProperties(ActiveMQMessage message) throws IOException {
+        message.removeProperty(ScheduledMessage.AMQ_SCHEDULED_PERIOD);
+        message.removeProperty(ScheduledMessage.AMQ_SCHEDULED_REPEAT);
+        message.removeProperty(ScheduledMessage.AMQ_SCHEDULED_CRON);
+        message.removeProperty(ScheduledMessage.AMQ_SCHEDULED_DELAY);
     }
 
     private void consumeTopicAck(org.apache.activemq.command.Message message, String clientId, byte ackType) {

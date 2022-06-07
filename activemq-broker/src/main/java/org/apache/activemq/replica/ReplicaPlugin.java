@@ -3,8 +3,11 @@ package org.apache.activemq.replica;
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.broker.Broker;
 import org.apache.activemq.broker.BrokerPluginSupport;
+import org.apache.activemq.broker.MutableBrokerFilter;
+import org.apache.activemq.broker.scheduler.SchedulerBroker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import java.net.URI;
 import java.util.Arrays;
 
@@ -30,6 +33,18 @@ public class ReplicaPlugin extends BrokerPluginSupport {
     @Override
     public Broker installPlugin(final Broker broker) {
         logger.info("{} installed, running as {}", ReplicaPlugin.class.getName(), role);
+        Broker replicaBrokerFilter = createReplicaPluginBrokerFilter(broker);
+        if (role == ReplicaRole.replica) {
+            return replicaBrokerFilter;
+        }
+        final MutableBrokerFilter scheduledBroker = (MutableBrokerFilter) broker.getAdaptor(SchedulerBroker.class);
+        if (scheduledBroker != null) {
+            scheduledBroker.setNext(new ReplicaSchedulerSourceBroker(scheduledBroker.getNext()));
+        }
+        return replicaBrokerFilter;
+    }
+
+    private Broker createReplicaPluginBrokerFilter(Broker broker) {
         switch (role) {
             case replica:
                 return new ReplicaBroker(broker, otherBrokerConnectionFactory);
