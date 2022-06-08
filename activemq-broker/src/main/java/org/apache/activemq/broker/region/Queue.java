@@ -2505,6 +2505,7 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
         do {
             doPageIn(true, false, getMaxPageSize());
             pagedInMessagesLock.readLock().lock();
+            List<MessageReference> list = new ArrayList<>();
             try {
                 if (pagedInMessages.size() == size) {
                     // nothing new to check - mem constraint on page in
