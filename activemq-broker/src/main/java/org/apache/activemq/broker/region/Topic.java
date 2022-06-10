@@ -618,6 +618,7 @@ public class Topic extends BaseDestination implements Task {
             }
         }
         messageConsumed(context, node);
+        broker.topicMessageAcknowledged(context, sub, ack, node);
     }
 
     @Override
