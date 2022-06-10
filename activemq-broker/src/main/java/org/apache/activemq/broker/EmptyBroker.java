@@ -364,4 +364,8 @@ public class EmptyBroker implements Broker {
     public void queueMessageDropped(ConnectionContext context, QueueMessageReference reference) {
     }
 
+    @Override
+    public void topicMessageAcknowledged(ConnectionContext context, Subscription sub, MessageAck ack, MessageReference node) {
+    }
+
 }
