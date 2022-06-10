@@ -1407,9 +1407,19 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
      * @return the number of messages removed
      */
     public int removeMatchingMessages(MessageReferenceFilter filter, int maximumMessages) throws Exception {
+        return removeMatchingMessages(null, filter, maximumMessages);
+    }
+
+    /**
+     * Removes the messages matching the given filter up to the maximum number
+     * of matched messages
+     *
+     * @return the number of messages removed
+     */
+    public int removeMatchingMessages(ConnectionContext c, MessageReferenceFilter filter, int maximumMessages) throws Exception {
         int movedCounter = 0;
         Set<MessageReference> set = new LinkedHashSet<MessageReference>();
-        ConnectionContext context = createConnectionContext();
+        ConnectionContext context = c != null ? c : createConnectionContext();
         do {
             doPageIn(true);
             pagedInMessagesLock.readLock().lock();
@@ -1927,6 +1937,7 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
                 pagedInMessagesLock.writeLock().unlock();
             }
         }
+        broker.queueMessageDropped(context, reference);
     }
 
     public void messageExpired(ConnectionContext context, MessageReference reference) {
