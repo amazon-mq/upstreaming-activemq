@@ -193,9 +193,11 @@ public class ReplicaBrokerEventListener implements MessageListener {
 
     private void dropMessages(ActiveMQDestination destination, List<String> messageIds) {
         try {
-            Queue queue = broker.getDestinations(destination).stream()
-                    .findFirst().map(DestinationExtractor::extractQueue).orElseThrow();
-            queue.removeMatchingMessages(connectionContext, new ListMessageReferenceFilter(messageIds), messageIds.size());
+            Optional<Queue> queue = broker.getDestinations(destination).stream()
+                    .findFirst().map(DestinationExtractor::extractQueue);
+            if (queue.isPresent()) {
+                queue.get().removeMatchingMessages(connectionContext, new ListMessageReferenceFilter(messageIds), messageIds.size());
+            }
         } catch (Exception e) {
             logger.error("Unable to replicate messages dropped [{}]", destination, e);
         }

@@ -255,6 +255,7 @@ public class ReplicaSourceBroker extends ReplicaSourceBaseBroker implements Task
                             .setEventType(ReplicaEventType.DESTINATION_DELETE)
                             .setEventData(eventSerializer.serializeReplicationData(destination))
             );
+            destinationsToReplicate.remove(destination, IS_REPLICATED);
         } catch (Exception e) {
             logger.error("Failed to replicate remove of destination {}", destination.getPhysicalName(), e);
         }
@@ -409,7 +410,7 @@ public class ReplicaSourceBroker extends ReplicaSourceBaseBroker implements Task
             super.send(producerExchange, messageSend);
         } catch (Exception e) {
             if (destination.isQueue()) {
-                queueMessageDropped(producerExchange.getConnectionContext(), new IndirectMessageReference(messageSend));
+                replicateQueueMessageDropped(producerExchange.getConnectionContext(), new IndirectMessageReference(messageSend));
             }
             if (destination.isTopic()) {
                 // TODO have correct handling of durable subscribers if there is such a situation
@@ -514,6 +515,11 @@ public class ReplicaSourceBroker extends ReplicaSourceBaseBroker implements Task
 
     @Override
     public void queueMessageDropped(ConnectionContext context, QueueMessageReference reference) {
+        super.queueMessageDropped(context, reference);
+        replicateQueueMessageDropped(context, reference);
+    }
+
+    private void replicateQueueMessageDropped(ConnectionContext context, QueueMessageReference reference) {
         if (isReplicaContext(context)) {
             return;
         }
@@ -593,6 +599,7 @@ public class ReplicaSourceBroker extends ReplicaSourceBaseBroker implements Task
 
     @Override
     public void topicMessageAcknowledged(ConnectionContext context, Subscription sub, MessageAck ack, MessageReference node) {
+        super.topicMessageAcknowledged(context, sub, ack, node);
         try {
             enqueueReplicaEvent(
                     context,

@@ -361,6 +361,5 @@ public class EmptyBroker implements Broker {
 
     @Override
     public void topicMessageAcknowledged(ConnectionContext context, Subscription sub, MessageAck ack, MessageReference node) {
-
     }
 }
