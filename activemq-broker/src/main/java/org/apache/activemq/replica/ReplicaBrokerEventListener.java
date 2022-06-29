@@ -30,6 +30,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static java.util.Objects.requireNonNull;
 
@@ -48,12 +49,19 @@ public class ReplicaBrokerEventListener implements MessageListener {
         replicaInternalMessageProducer = new ReplicaInternalMessageProducer(broker, connectionContext);
     }
 
+    private final AtomicLong executionCounts = new AtomicLong();
+    private final AtomicLong totalExecutionTime = new AtomicLong();
+    private final AtomicLong sendExecutionCounts = new AtomicLong();
+    private final AtomicLong sendTotalExecutionTime = new AtomicLong();
+    private final AtomicLong dropExecutionCounts = new AtomicLong();
+    private final AtomicLong dropTotalExecutionTime = new AtomicLong();
+
     @Override
     public void onMessage(Message jmsMessage) {
         logger.trace("Received replication message from replica source");
         ActiveMQMessage message = (ActiveMQMessage) jmsMessage;
         ByteSequence messageContent = message.getContent();
-
+        final long startNano = System.nanoTime();
         try {
             Object deserializedData = eventSerializer.deserializeMessageData(messageContent);
             getEventType(message).ifPresent(eventType -> {
@@ -61,6 +69,11 @@ public class ReplicaBrokerEventListener implements MessageListener {
                     case MESSAGE_SEND:
                         logger.trace("Processing replicated message send");
                         persistMessage((ActiveMQMessage) deserializedData);
+                        long sendCurrentExecution = sendExecutionCounts.addAndGet(1);
+                        long sendCurrentTotalTime = sendTotalExecutionTime.addAndGet(System.nanoTime() - startNano);
+                        if (sendCurrentExecution % 1000 == 0) {
+                            logger.error("[MESSAGE_SEND] average execution time for [{}] messages is [{}]ns", sendCurrentExecution, sendCurrentTotalTime / sendCurrentExecution);
+                        }
                         return;
                     case TOPIC_MESSAGE_ACK:
                         logger.trace("Processing replicated topic message ack");
@@ -75,9 +88,14 @@ public class ReplicaBrokerEventListener implements MessageListener {
                     case MESSAGES_DROPPED:
                         logger.trace("Processing replicated messages dropped");
                         try {
-                            dropMessages(
-                                    (ActiveMQDestination) deserializedData,
-                                    (List<String>) message.getObjectProperty(ReplicaSupport.MESSAGE_IDS_PROPERTY));
+                            List<String> ids = (List<String>) message.getObjectProperty(ReplicaSupport.MESSAGE_IDS_PROPERTY);
+                            dropMessages((ActiveMQDestination) deserializedData, ids);
+                            long prevDropExecutionCount = dropExecutionCounts.getAndAdd(ids.size());
+                            long newDropExecutionCount = prevDropExecutionCount + ids.size();
+                            long dropCurrentTotalTime = dropTotalExecutionTime.addAndGet(System.nanoTime() - startNano);
+                            if (prevDropExecutionCount/1000 < newDropExecutionCount/1000) {
+                                logger.error("[MESSAGES_DROPPED] average execution time for [{}] messages is [{}]ns", newDropExecutionCount, dropCurrentTotalTime / newDropExecutionCount);
+                            }
                         } catch (JMSException e) {
                             logger.error("Failed to extract property to replicate messages dropped [{}]", deserializedData, e);
                         }
@@ -134,6 +152,11 @@ public class ReplicaBrokerEventListener implements MessageListener {
                 }
             });
             message.acknowledge();
+            long currentExecution = executionCounts.addAndGet(1);
+            long currentTotalTime = totalExecutionTime.addAndGet(System.nanoTime() - startNano);
+            if (currentExecution % 1000 == 0) {
+                logger.error("[onMessage] average execution time for [{}] messages is [{}]ns", currentExecution, currentTotalTime / currentExecution);
+            }
         } catch (IOException | ClassCastException e) {
             logger.error("Failed to deserialize replication message (id={}), {}", message.getMessageId(), new String(messageContent.data));
             logger.debug("Deserialization error for replication message (id={})", message.getMessageId(), e);
