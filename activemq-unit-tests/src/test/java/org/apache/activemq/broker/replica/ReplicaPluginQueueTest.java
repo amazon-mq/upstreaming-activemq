@@ -29,6 +29,7 @@ public class ReplicaPluginQueueTest extends ReplicaPluginTestSupport {
     protected Connection secondBrokerConnection;
 
     protected XAConnection firstBrokerXAConnection;
+    protected XAConnection secondBrokerXAConnection;
 
     @Override
     protected void setUp() throws Exception {
@@ -41,6 +42,9 @@ public class ReplicaPluginQueueTest extends ReplicaPluginTestSupport {
 
         firstBrokerXAConnection = firstBrokerXAConnectionFactory.createXAConnection();
         firstBrokerXAConnection.start();
+
+        secondBrokerXAConnection = secondBrokerXAConnectionFactory.createXAConnection();
+        secondBrokerXAConnection.start();
     }
 
     @Override
@@ -57,6 +61,10 @@ public class ReplicaPluginQueueTest extends ReplicaPluginTestSupport {
         if (firstBrokerXAConnection != null) {
             firstBrokerXAConnection.close();
             firstBrokerXAConnection = null;
+        }
+        if (secondBrokerXAConnection != null) {
+            secondBrokerXAConnection.close();
+            secondBrokerXAConnection = null;
         }
 
         super.tearDown();
@@ -199,6 +207,44 @@ public class ReplicaPluginQueueTest extends ReplicaPluginTestSupport {
         assertEquals(getName(), ((TextMessage) receivedMessage).getText());
 
         firstBrokerSession.close();
+        secondBrokerSession.close();
+    }
+
+    public void testSendMessageXATransactionCommitOnReplica() throws Exception {
+        XASession firstBrokerSession = firstBrokerXAConnection.createXASession();
+        MessageProducer firstBrokerProducer = firstBrokerSession.createProducer(destination);
+
+        XASession secondBrokerXaSession = secondBrokerXAConnection.createXASession();
+        Session secondBrokerSession = secondBrokerConnection.createSession(false, Session.CLIENT_ACKNOWLEDGE);
+        MessageConsumer secondBrokerConsumer = secondBrokerSession.createConsumer(destination);
+
+        XAResource xaRes = firstBrokerSession.getXAResource();
+        Xid xid = createXid();
+        xaRes.start(xid, XAResource.TMNOFLAGS);
+
+        TextMessage message  = firstBrokerSession.createTextMessage(getName());
+        firstBrokerProducer.send(message);
+
+        xaRes.end(xid, XAResource.TMSUCCESS);
+
+        Message receivedMessage = secondBrokerConsumer.receive(LONG_TIMEOUT);
+        assertNull(receivedMessage);
+
+        xaRes.prepare(xid);
+
+        receivedMessage = secondBrokerConsumer.receive(LONG_TIMEOUT);
+        assertNull(receivedMessage);
+
+        xaRes = secondBrokerXaSession.getXAResource();
+        xaRes.commit(xid, false);
+
+        receivedMessage = secondBrokerConsumer.receive(LONG_TIMEOUT);
+        assertNotNull(receivedMessage);
+        assertTrue(receivedMessage instanceof TextMessage);
+        assertEquals(getName(), ((TextMessage) receivedMessage).getText());
+
+        firstBrokerSession.close();
+        secondBrokerXaSession.close();
         secondBrokerSession.close();
     }
 
