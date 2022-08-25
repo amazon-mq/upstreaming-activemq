@@ -62,7 +62,7 @@ stop() {
 }
 
 kill_mq() {
-  pkill -f 'activemq'
+  ps aux | grep activemq | grep java | awk '{split($0,a," "); print a[2]}' | xargs -I "{}" kill -9 "{}"
 }
 
 case "$command" in
