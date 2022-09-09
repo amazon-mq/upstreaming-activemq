@@ -11,6 +11,7 @@ import org.apache.activemq.broker.TransportConnector;
 import org.apache.activemq.broker.region.Destination;
 import org.apache.activemq.broker.region.MessageReference;
 import org.apache.activemq.broker.region.PrefetchSubscription;
+import org.apache.activemq.broker.region.QueueBrowserSubscription;
 import org.apache.activemq.broker.region.Subscription;
 import org.apache.activemq.command.ActiveMQDestination;
 import org.apache.activemq.command.ConnectionId;
@@ -448,12 +449,23 @@ public class ReplicaSourceBroker extends ReplicaSourceBaseBroker {
     @Override
     public void acknowledge(ConsumerBrokerExchange consumerExchange, MessageAck ack) throws Exception {
         ConnectionContext connectionContext = consumerExchange.getConnectionContext();
-        if (!needToReplicateAck(connectionContext, ack)) {
+
+        PrefetchSubscription subscription = getDestinations(ack.getDestination()).stream().findFirst()
+                .map(Destination::getConsumers).stream().flatMap(Collection::stream)
+                .filter(c -> c.getConsumerInfo().getConsumerId().equals(ack.getConsumerId()))
+                .findFirst().filter(PrefetchSubscription.class::isInstance).map(PrefetchSubscription.class::cast)
+                .orElse(null);
+        if (subscription == null) {
             super.acknowledge(consumerExchange, ack);
             return;
         }
 
-        List<String> messageIdsToAck = getMessageIdsToAck(ack);
+        if (!needToReplicateAck(connectionContext, ack, subscription)) {
+            super.acknowledge(consumerExchange, ack);
+            return;
+        }
+
+        List<String> messageIdsToAck = getMessageIdsToAck(ack, subscription);
         if (messageIdsToAck == null) {
             super.acknowledge(consumerExchange, ack);
             return;
@@ -484,17 +496,8 @@ public class ReplicaSourceBroker extends ReplicaSourceBaseBroker {
         }
     }
 
-    private List<String> getMessageIdsToAck(MessageAck ack) {
-        if (ack.isStandardAck()) {
-            PrefetchSubscription subscription = getDestinations(ack.getDestination()).stream().findFirst()
-                    .map(Destination::getConsumers).stream().flatMap(Collection::stream)
-                    .filter(c -> c.getConsumerInfo().getConsumerId().equals(ack.getConsumerId()))
-                    .findFirst().filter(PrefetchSubscription.class::isInstance).map(PrefetchSubscription.class::cast)
-                    .orElse(null);
-            if (subscription == null) {
-                return null;
-            }
-
+    private List<String> getMessageIdsToAck(MessageAck ack, PrefetchSubscription subscription) {
+        if (ack.isStandardAck() || ack.isExpiredAck() || ack.isPoisonAck()) {
             boolean inAckRange = false;
             List<String> removeList = new ArrayList<>();
             for (final MessageReference node : subscription.getDispatched()) {
@@ -539,7 +542,7 @@ public class ReplicaSourceBroker extends ReplicaSourceBaseBroker {
         }
     }
 
-    private boolean needToReplicateAck(ConnectionContext connectionContext, MessageAck ack) {
+    private boolean needToReplicateAck(ConnectionContext connectionContext, MessageAck ack, PrefetchSubscription subscription) {
         if (isReplicaContext(connectionContext)) {
             return false;
         }
@@ -550,6 +553,9 @@ public class ReplicaSourceBroker extends ReplicaSourceBaseBroker {
             return false;
         }
         if (!ack.isStandardAck() && !ack.isIndividualAck()) {
+            return false;
+        }
+        if (subscription instanceof QueueBrowserSubscription && !connectionContext.isNetworkConnection()) {
             return false;
         }
 
