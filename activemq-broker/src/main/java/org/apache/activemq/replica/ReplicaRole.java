@@ -16,20 +16,6 @@
  */
 package org.apache.activemq.replica;
 
-public enum ReplicaEventType {
-    DESTINATION_UPSERT,
-    DESTINATION_DELETE,
-    MESSAGE_SEND,
-    MESSAGE_ACK,
-    QUEUE_PURGED,
-    TRANSACTION_BEGIN,
-    TRANSACTION_PREPARE,
-    TRANSACTION_ROLLBACK,
-    TRANSACTION_COMMIT,
-    TRANSACTION_FORGET,
-    ADD_DURABLE_CONSUMER,
-    REMOVE_DURABLE_CONSUMER,
-    ;
-
-    static final String EVENT_TYPE_PROPERTY = "ActiveMQ.Replication.EventType";
+public enum ReplicaRole {
+    source, replica, dual
 }
