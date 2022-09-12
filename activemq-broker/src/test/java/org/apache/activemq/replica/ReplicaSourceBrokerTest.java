@@ -354,10 +354,19 @@ public class ReplicaSourceBrokerTest {
 
         MessageId messageId = new MessageId("1:1");
 
+        ConsumerId consumerId = new ConsumerId("2:2:2:2");
         MessageAck messageAck = new MessageAck();
         messageAck.setMessageID(messageId);
+        messageAck.setConsumerId(consumerId);
         messageAck.setDestination(testDestination);
         messageAck.setAckType(MessageAck.INDIVIDUAL_ACK_TYPE);
+
+        Queue queue = mock(Queue.class);
+        when(broker.getDestinations(testDestination)).thenReturn(Set.of(queue));
+        PrefetchSubscription subscription = mock(PrefetchSubscription.class);
+        when(queue.getConsumers()).thenReturn(List.of(subscription));
+        ConsumerInfo consumerInfo = new ConsumerInfo(consumerId);
+        when(subscription.getConsumerInfo()).thenReturn(consumerInfo);
 
         ConsumerBrokerExchange cbe = new ConsumerBrokerExchange();
         cbe.setConnectionContext(connectionContext);
