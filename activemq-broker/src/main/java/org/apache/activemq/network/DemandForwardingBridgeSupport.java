@@ -1567,7 +1567,7 @@ public abstract class DemandForwardingBridgeSupport implements NetworkBridge, Br
     }
 
     protected DemandSubscription doCreateDemandSubscription(ConsumerInfo info) throws IOException {
-        if (ReplicaSupport.REPLICATION_QUEUE_NAME.equals(info.getDestination().getPhysicalName())) {
+        if (ReplicaSupport.isReplicationQueue(info.getDestination())) {
             return null;
         }
 
