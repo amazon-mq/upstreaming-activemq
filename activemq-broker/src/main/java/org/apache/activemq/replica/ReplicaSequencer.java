@@ -239,7 +239,7 @@ public class ReplicaSequencer implements Task {
             }
 
             try {
-                replicaStorage.write(sequence.toString() + "#" + toProcess.get(toProcess.size() - 1).getMessageId());
+                replicaStorage.write(sequence.toString() + "#" + toProcess.get(0).getMessageId());
             } catch (Exception e) {
                 logger.error("Could not write source sequence to disk", e);
             }
