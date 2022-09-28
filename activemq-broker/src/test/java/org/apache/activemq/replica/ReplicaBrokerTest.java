@@ -16,15 +16,15 @@
  */
 package org.apache.activemq.replica;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.catchThrowable;
-import static org.junit.Assert.fail;
-import static org.mockito.Mockito.mock;
-
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.broker.Broker;
 import org.junit.Ignore;
 import org.junit.Test;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.catchThrowable;
+import static org.junit.Assert.fail;
+import static org.mockito.Mockito.mock;
 
 public class ReplicaBrokerTest {
 

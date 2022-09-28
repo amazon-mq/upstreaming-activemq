@@ -18,13 +18,16 @@ package org.apache.activemq.replica;
 
 import org.apache.activemq.command.ActiveMQDestination;
 import org.apache.activemq.command.ActiveMQMessage;
+import org.apache.activemq.command.ActiveMQTextMessage;
 import org.apache.activemq.command.DataStructure;
+import org.apache.activemq.command.MessageId;
 import org.apache.activemq.util.ByteSequence;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.mockito.Mockito;
 
 import java.io.IOException;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.Assert.fail;
@@ -32,6 +35,37 @@ import static org.junit.Assert.fail;
 public class ReplicaEventSerializerTest {
 
     private final ReplicaEventSerializer serializer = new ReplicaEventSerializer();
+
+    @Test
+    public void serializeListOfObjectsTest() throws Exception {
+        MessageId messageId1 = new MessageId("1:1:1:1");
+        ActiveMQTextMessage message1 = new ActiveMQTextMessage();
+        message1.setMessageId(messageId1);
+        String text1 = "testtesttesttesttesttesttest1";
+        message1.setText(text1);
+
+        MessageId messageId2 = new MessageId("2:2:2:2");
+        ActiveMQTextMessage message2 = new ActiveMQTextMessage();
+        message2.setMessageId(messageId2);
+        String text2 = "testtesttesttesttesttesttesttesttesttesttesttesttesttest2";
+        message2.setText(text2);
+
+        byte[] bytes = serializer.serializeListOfObjects(List.of(message1, message2));
+
+        List<Object> objects = serializer.deserializeListOfObjects(bytes);
+        System.out.println(objects);
+        assertThat(objects.size()).isEqualTo(2);
+        Object o1 = objects.get(0);
+        Object o2 = objects.get(1);
+        assertThat(o1).isInstanceOf(ActiveMQTextMessage.class);
+        assertThat(o2).isInstanceOf(ActiveMQTextMessage.class);
+        ActiveMQTextMessage m1 = (ActiveMQTextMessage) o1;
+        ActiveMQTextMessage m2 = (ActiveMQTextMessage) o2;
+        assertThat(m1.getMessageId()).isEqualTo(messageId1);
+        assertThat(m2.getMessageId()).isEqualTo(messageId2);
+        assertThat(m1.getText()).isEqualTo(text1);
+        assertThat(m2.getText()).isEqualTo(text2);
+    }
 
     @Test
     @Ignore

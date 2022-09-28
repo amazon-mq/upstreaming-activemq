@@ -16,17 +16,17 @@
  */
 package org.apache.activemq.replica;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.catchThrowable;
-import static org.mockito.Mockito.mock;
-
-import java.net.URI;
-import java.util.Arrays;
-
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.broker.Broker;
 import org.assertj.core.api.SoftAssertions;
 import org.junit.Test;
+
+import java.net.URI;
+import java.util.Arrays;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.catchThrowable;
+import static org.mockito.Mockito.mock;
 
 public class ReplicaPluginTest {
 
