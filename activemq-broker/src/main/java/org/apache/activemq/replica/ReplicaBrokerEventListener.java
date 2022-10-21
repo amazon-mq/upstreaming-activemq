@@ -43,6 +43,7 @@ import javax.jms.MessageListener;
 import java.io.File;
 import java.io.IOException;
 import java.math.BigInteger;
+import java.time.Instant;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
@@ -68,6 +69,9 @@ public class ReplicaBrokerEventListener implements MessageListener {
     private final ReplicaStorage replicaStorage;
 
     BigInteger sequence;
+
+    private final int NUMBER_OF_MESSAGES_TO_LOG = 1000;
+    private int messagesProcessed = 0;
 
     ReplicaBrokerEventListener(Broker broker) {
         this.broker = requireNonNull(broker);
@@ -130,6 +134,11 @@ public class ReplicaBrokerEventListener implements MessageListener {
 
             try {
                 replicaStorage.write(sequence.toString());
+                messagesProcessed++;
+                if (messagesProcessed == NUMBER_OF_MESSAGES_TO_LOG) {
+                    logger.info("PROF {} {}", Instant.now().getEpochSecond(), NUMBER_OF_MESSAGES_TO_LOG);
+                    messagesProcessed = 0;
+                }
             } catch (IOException e) {
                 logger.error("Could not write replica sequence to disk", e);
             }
@@ -137,6 +146,8 @@ public class ReplicaBrokerEventListener implements MessageListener {
             throw new IllegalStateException(String.format(
                     "Replication event is out of order. Current sequence: %s, the sequence of the event: %s",
                     sequence, newSequence));
+        } else if (sequenceDifference < 0) {
+            logger.info("Replication message duplicate.");
         }
     }
 
