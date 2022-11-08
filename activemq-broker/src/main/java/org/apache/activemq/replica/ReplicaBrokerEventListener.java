@@ -51,10 +51,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
 
 import static java.util.Objects.requireNonNull;
 
@@ -258,8 +254,9 @@ public class ReplicaBrokerEventListener implements MessageListener {
         message.removeProperty(ScheduledMessage.AMQ_SCHEDULED_DELAY);
     }
 
-    private void messageAck(MessageAck ack, List<String> messageIdsToAck) {
+    private void messageAck(MessageAck ack, List<String> messageIdsToAck) throws Exception {
         ActiveMQDestination destination = ack.getDestination();
+        MessageAck messageAck = new MessageAck();
         try {
 
             ConnectionContext context = connectionContext.copy();
@@ -279,13 +276,19 @@ public class ReplicaBrokerEventListener implements MessageListener {
                 messageDispatch(ack.getConsumerId(), destination, messageId);
             }
 
+            ack.copy(messageAck);
+
+            messageAck.setMessageCount(messageIdsToAck.size());
+            messageAck.setFirstMessageId(new MessageId(messageIdsToAck.get(0)));
+            messageAck.setLastMessageId(new MessageId(messageIdsToAck.get(messageIdsToAck.size() - 1)));
+
             if (ack.getTransactionId() != null && !ack.getTransactionId().isXATransaction()) {
-                ack.setTransactionId(null); // remove transactionId as it has been already handled on source broker
+                messageAck.setTransactionId(null); // remove transactionId as it has been already handled on source broker
             }
 
             ConsumerBrokerExchange consumerBrokerExchange = new ConsumerBrokerExchange();
             consumerBrokerExchange.setConnectionContext(connectionContext);
-            broker.acknowledge(consumerBrokerExchange, ack);
+            broker.acknowledge(consumerBrokerExchange, messageAck);
 
             if (consumerInfo != null) {
                 broker.removeConsumer(context, consumerInfo);
@@ -295,6 +298,7 @@ public class ReplicaBrokerEventListener implements MessageListener {
                     ack.getFirstMessageId(),
                     ack.getLastMessageId(),
                     ack.getConsumerId(), e);
+            throw e;
         }
     }
 
