@@ -32,7 +32,7 @@ public class ReplicaBrokerTest {
     public void requiresConnectionFactory() {
         var broker = mock(Broker.class);
 
-        var exception = catchThrowable(() -> new ReplicaBroker(broker,null));
+        var exception = catchThrowable(() -> new ReplicaBroker(broker, null, null));
 
         assertThat(exception).isExactlyInstanceOf(NullPointerException.class)
             .hasMessage("Need connection details of replica source for this broker");
@@ -43,7 +43,7 @@ public class ReplicaBrokerTest {
         var broker = mock(Broker.class);
         var connectionFactory = new ActiveMQConnectionFactory();
 
-        new ReplicaBroker(broker, connectionFactory);
+        new ReplicaBroker(broker, null, connectionFactory);
     }
 
     @Test

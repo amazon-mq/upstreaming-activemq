@@ -21,6 +21,7 @@ import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.broker.ConnectionContext;
 import org.apache.activemq.broker.region.Destination;
 import org.apache.activemq.broker.region.DurableTopicSubscription;
+import org.apache.activemq.broker.region.PrefetchSubscription;
 import org.apache.activemq.broker.region.Queue;
 import org.apache.activemq.broker.region.Region;
 import org.apache.activemq.broker.region.RegionBroker;
@@ -55,6 +56,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -63,11 +65,15 @@ public class ReplicaBrokerEventListenerTest {
     private final Broker broker = mock(Broker.class);
     private final RegionBroker regionBroker = mock(RegionBroker.class);
     private final Region region = mock(Region.class);
+    private final ActiveMQQueue sequenceQueue = new ActiveMQQueue(ReplicaSupport.SEQUENCE_REPLICATION_QUEUE_NAME);
     private final ActiveMQQueue testQueue = new ActiveMQQueue("TEST.QUEUE");
     private final ActiveMQTopic testTopic = new ActiveMQTopic("TEST.TOPIC");
+    private final Destination sequenceDstinationQueue = mock(Queue.class);
     private final Destination destinationQueue = mock(Queue.class);
     private final Destination destinationTopic = mock(Topic.class);
     private final ConnectionContext connectionContext = mock(ConnectionContext.class);
+    private final ReplicaReplicationQueueSupplier queueProvider = mock(ReplicaReplicationQueueSupplier.class);
+    private final PrefetchSubscription subscription = mock(PrefetchSubscription.class);
 
     private ReplicaBrokerEventListener listener;
     private final ReplicaEventSerializer eventSerializer = new ReplicaEventSerializer();
@@ -88,8 +94,11 @@ public class ReplicaBrokerEventListenerTest {
         when(broker.getBrokerService()).thenReturn(brokerService);
         File brokerDataDirectory = new File(IOHelper.getDefaultDataDirectory());
         when(brokerService.getBrokerDataDirectory()).thenReturn(brokerDataDirectory);
+        when(queueProvider.getSequenceQueue()).thenReturn(sequenceQueue);
+        when(broker.getDestinations(sequenceQueue)).thenReturn(Set.of(sequenceDstinationQueue));
+        when(broker.addConsumer(any(), any())).thenReturn(subscription);
 
-        listener = new ReplicaBrokerEventListener(broker);
+        listener = new ReplicaBrokerEventListener(broker, queueProvider);
         listener.initialize();
     }
 
@@ -192,16 +201,17 @@ public class ReplicaBrokerEventListenerTest {
 
         listener.onMessage(replicaEventMessage);
 
-        verify(broker).getAdminConnectionContext();
+        verify(broker, times(2)).getAdminConnectionContext();
         ArgumentCaptor<ActiveMQMessage> messageArgumentCaptor = ArgumentCaptor.forClass(ActiveMQMessage.class);
-        verify(broker).send(any(), messageArgumentCaptor.capture());
+        verify(broker, times(2)).send(any(), messageArgumentCaptor.capture());
 
-        ActiveMQMessage value = messageArgumentCaptor.getValue();
-        assertThat(value).isEqualTo(message);
+        List<ActiveMQMessage> values = messageArgumentCaptor.getAllValues();
+        assertThat(values.get(0).getMessageId()).isEqualTo(message.getMessageId());
+        assertThat(values.get(1).getDestination()).isEqualTo(sequenceQueue);
 
-        verify(connectionContext).isProducerFlowControl();
-        verify(connectionContext).setProducerFlowControl(false);
-        verify(connectionContext).setProducerFlowControl(true);
+        verify(connectionContext, times(2)).isProducerFlowControl();
+        verify(connectionContext, times(2)).setProducerFlowControl(false);
+        verify(connectionContext, times(2)).setProducerFlowControl(true);
 
         verify(replicaEventMessage).acknowledge();
     }
@@ -229,7 +239,10 @@ public class ReplicaBrokerEventListenerTest {
 
         listener.onMessage(replicaEventMessage);
 
-        verify(broker, never()).addConsumer(any(), any());
+        ArgumentCaptor<ConsumerInfo> ciArgumentCaptor = ArgumentCaptor.forClass(ConsumerInfo.class);
+        verify(broker).addConsumer(any(), ciArgumentCaptor.capture());
+        ConsumerInfo consumerInfo = ciArgumentCaptor.getValue();
+        assertThat(consumerInfo.getDestination()).isEqualTo(sequenceQueue);
 
         ArgumentCaptor<MessageDispatchNotification> mdnArgumentCaptor = ArgumentCaptor.forClass(MessageDispatchNotification.class);
         verify(broker).processDispatchNotification(mdnArgumentCaptor.capture());
@@ -273,10 +286,11 @@ public class ReplicaBrokerEventListenerTest {
         listener.onMessage(replicaEventMessage);
 
         ArgumentCaptor<ConsumerInfo> ciArgumentCaptor = ArgumentCaptor.forClass(ConsumerInfo.class);
-        verify(broker).addConsumer(any(), ciArgumentCaptor.capture());
-        ConsumerInfo consumerInfo = ciArgumentCaptor.getValue();
-        assertThat(consumerInfo.getConsumerId()).isEqualTo(consumerId);
-        assertThat(consumerInfo.getDestination()).isEqualTo(testQueue);
+        verify(broker, times(2)).addConsumer(any(), ciArgumentCaptor.capture());
+        List<ConsumerInfo> consumerInfos = ciArgumentCaptor.getAllValues();
+        assertThat(consumerInfos.get(0).getDestination()).isEqualTo(sequenceQueue);
+        assertThat(consumerInfos.get(1).getConsumerId()).isEqualTo(consumerId);
+        assertThat(consumerInfos.get(1).getDestination()).isEqualTo(testQueue);
 
 
         ArgumentCaptor<MessageDispatchNotification> mdnArgumentCaptor = ArgumentCaptor.forClass(MessageDispatchNotification.class);
@@ -335,9 +349,10 @@ public class ReplicaBrokerEventListenerTest {
         listener.onMessage(message);
 
         ArgumentCaptor<TransactionId> messageArgumentCaptor = ArgumentCaptor.forClass(TransactionId.class);
-        verify(broker).beginTransaction(any(), messageArgumentCaptor.capture());
-        TransactionId value = messageArgumentCaptor.getValue();
-        assertThat(value).isEqualTo(transactionId);
+        verify(broker, times(2)).beginTransaction(any(), messageArgumentCaptor.capture());
+        List<TransactionId> values = messageArgumentCaptor.getAllValues();
+        assertThat(values.get(0)).isNotEqualTo(transactionId);
+        assertThat(values.get(1)).isEqualTo(transactionId);
         verify(message).acknowledge();
     }
 
@@ -407,11 +422,13 @@ public class ReplicaBrokerEventListenerTest {
 
         ArgumentCaptor<TransactionId> messageArgumentCaptor = ArgumentCaptor.forClass(TransactionId.class);
         ArgumentCaptor<Boolean> onePhaseArgumentCaptor = ArgumentCaptor.forClass(Boolean.class);
-        verify(broker).commitTransaction(any(), messageArgumentCaptor.capture(), onePhaseArgumentCaptor.capture());
-        TransactionId value = messageArgumentCaptor.getValue();
-        assertThat(value).isEqualTo(transactionId);
-        Boolean onePhase = onePhaseArgumentCaptor.getValue();
-        assertThat(onePhase).isTrue();
+        verify(broker, times(2)).commitTransaction(any(), messageArgumentCaptor.capture(), onePhaseArgumentCaptor.capture());
+        List<TransactionId> values = messageArgumentCaptor.getAllValues();
+        assertThat(values.get(0)).isEqualTo(transactionId);
+        assertThat(values.get(1)).isNotEqualTo(transactionId);
+        List<Boolean> onePhaseValues = onePhaseArgumentCaptor.getAllValues();
+        assertThat(onePhaseValues.get(0)).isTrue();
+        assertThat(onePhaseValues.get(1)).isTrue();
         verify(message).acknowledge();
     }
 
@@ -463,9 +480,10 @@ public class ReplicaBrokerEventListenerTest {
 
         ArgumentCaptor<ConsumerInfo> messageArgumentCaptor = ArgumentCaptor.forClass(ConsumerInfo.class);
         ArgumentCaptor<ConnectionContext> connectionContextArgumentCaptor = ArgumentCaptor.forClass(ConnectionContext.class);
-        verify(broker).addConsumer(connectionContextArgumentCaptor.capture(), messageArgumentCaptor.capture());
-        ConsumerInfo value = messageArgumentCaptor.getValue();
-        assertThat(value.getDestination()).isEqualTo(testQueue);
+        verify(broker, times(2)).addConsumer(connectionContextArgumentCaptor.capture(), messageArgumentCaptor.capture());
+        List<ConsumerInfo> consumerInfos = messageArgumentCaptor.getAllValues();
+        assertThat(consumerInfos.get(0).getDestination()).isEqualTo(sequenceQueue);
+        assertThat(consumerInfos.get(1).getDestination()).isEqualTo(testQueue);
         ConnectionContext connectionContext = connectionContextArgumentCaptor.getValue();
         assertThat(connectionContext.getClientId()).isEqualTo(clientId);
         verify(subscription).deactivate(true, 0);
@@ -546,22 +564,24 @@ public class ReplicaBrokerEventListenerTest {
 
         listener.onMessage(replicaEventMessage);
 
-        verify(broker).getAdminConnectionContext();
+        verify(broker, times(2)).getAdminConnectionContext();
         ArgumentCaptor<ActiveMQMessage> messageArgumentCaptor = ArgumentCaptor.forClass(ActiveMQMessage.class);
-        verify(broker).send(any(), messageArgumentCaptor.capture());
+        verify(broker, times(2)).send(any(), messageArgumentCaptor.capture());
 
-        ActiveMQMessage messageValue = messageArgumentCaptor.getValue();
-        assertThat(messageValue).isEqualTo(message);
+        List<ActiveMQMessage> values = messageArgumentCaptor.getAllValues();
+        assertThat(values.get(0).getMessageId()).isEqualTo(message.getMessageId());
+        assertThat(values.get(1).getDestination()).isEqualTo(sequenceQueue);
 
-        verify(connectionContext).isProducerFlowControl();
-        verify(connectionContext).setProducerFlowControl(false);
-        verify(connectionContext).setProducerFlowControl(true);
+        verify(connectionContext, times(2)).isProducerFlowControl();
+        verify(connectionContext, times(2)).setProducerFlowControl(false);
+        verify(connectionContext, times(2)).setProducerFlowControl(true);
 
         ArgumentCaptor<ConsumerInfo> ciArgumentCaptor = ArgumentCaptor.forClass(ConsumerInfo.class);
-        verify(broker).addConsumer(any(), ciArgumentCaptor.capture());
-        ConsumerInfo consumerInfo = ciArgumentCaptor.getValue();
-        assertThat(consumerInfo.getConsumerId()).isEqualTo(consumerId);
-        assertThat(consumerInfo.getDestination()).isEqualTo(testQueue);
+        verify(broker, times(2)).addConsumer(any(), ciArgumentCaptor.capture());
+        List<ConsumerInfo> consumerInfos = ciArgumentCaptor.getAllValues();
+        assertThat(consumerInfos.get(0).getDestination()).isEqualTo(sequenceQueue);
+        assertThat(consumerInfos.get(1).getConsumerId()).isEqualTo(consumerId);
+        assertThat(consumerInfos.get(1).getDestination()).isEqualTo(testQueue);
 
 
         ArgumentCaptor<MessageDispatchNotification> mdnArgumentCaptor = ArgumentCaptor.forClass(MessageDispatchNotification.class);
@@ -601,16 +621,17 @@ public class ReplicaBrokerEventListenerTest {
 
         listener.onMessage(replicaEventMessage);
 
-        verify(broker).getAdminConnectionContext();
+        verify(broker, times(2)).getAdminConnectionContext();
         ArgumentCaptor<ActiveMQMessage> messageArgumentCaptor = ArgumentCaptor.forClass(ActiveMQMessage.class);
-        verify(broker).send(any(), messageArgumentCaptor.capture());
+        verify(broker, times(2)).send(any(), messageArgumentCaptor.capture());
 
-        ActiveMQMessage value = messageArgumentCaptor.getValue();
-        assertThat(value).isEqualTo(message);
+        List<ActiveMQMessage> values = messageArgumentCaptor.getAllValues();
+        assertThat(values.get(0).getMessageId()).isEqualTo(message.getMessageId());
+        assertThat(values.get(1).getDestination()).isEqualTo(sequenceQueue);
 
-        verify(connectionContext).isProducerFlowControl();
-        verify(connectionContext).setProducerFlowControl(false);
-        verify(connectionContext).setProducerFlowControl(true);
+        verify(connectionContext, times(2)).isProducerFlowControl();
+        verify(connectionContext, times(2)).setProducerFlowControl(false);
+        verify(connectionContext, times(2)).setProducerFlowControl(true);
 
         verify(replicaEventMessage).acknowledge();
     }
@@ -634,7 +655,10 @@ public class ReplicaBrokerEventListenerTest {
 
         listener.onMessage(replicaEventMessage);
 
-        verify(broker, never()).send(any(), any());
+        ArgumentCaptor<ActiveMQMessage> messageArgumentCaptor = ArgumentCaptor.forClass(ActiveMQMessage.class);
+        verify(broker).send(any(), messageArgumentCaptor.capture());
+        ActiveMQMessage value = messageArgumentCaptor.getValue();
+        assertThat(value.getDestination()).isEqualTo(sequenceQueue);
 
         verify(replicaEventMessage).acknowledge();
     }
