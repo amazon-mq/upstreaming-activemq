@@ -1,8 +1,26 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package org.apache.activemq.replica;
 
 import org.apache.activemq.broker.Broker;
+import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.broker.ConnectionContext;
 import org.apache.activemq.broker.ConsumerBrokerExchange;
+import org.apache.activemq.broker.jmx.AnnotatedMBean;
 import org.apache.activemq.broker.region.MessageReference;
 import org.apache.activemq.broker.region.PrefetchSubscription;
 import org.apache.activemq.broker.region.Queue;
@@ -17,15 +35,19 @@ import org.apache.activemq.command.MessageAck;
 import org.apache.activemq.command.MessageId;
 import org.apache.activemq.command.SessionId;
 import org.apache.activemq.command.TransactionId;
+import org.apache.activemq.replica.jmx.ReplicationView;
 import org.apache.activemq.thread.Task;
 import org.apache.activemq.thread.TaskRunner;
 import org.apache.activemq.thread.TaskRunnerFactory;
 import org.apache.activemq.util.IdGenerator;
+import org.apache.activemq.util.JMXSupport;
 import org.apache.activemq.util.LongSequenceGenerator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.jms.JMSException;
+import javax.management.MalformedObjectNameException;
+import javax.management.ObjectName;
 import java.io.File;
 import java.math.BigInteger;
 import java.util.ArrayList;
@@ -81,6 +103,10 @@ public class ReplicaSequencer implements Task {
 
     private final AtomicBoolean initialized = new AtomicBoolean();
 
+    private ReplicationView replicationView;
+    private final AtomicLong counter = new AtomicLong();
+    private long lastCounter;
+
     public ReplicaSequencer(Broker broker, ReplicaReplicationQueueSupplier queueProvider,
             ReplicationMessageProducer replicationMessageProducer) {
         this.broker = broker;
@@ -88,12 +114,22 @@ public class ReplicaSequencer implements Task {
         this.replicationMessageProducer = replicationMessageProducer;
         this.replicaStorage = new ReplicaStorage("source_sequence");
 
+        if (broker.getBrokerService().isUseJmx()) {
+            replicationView = new ReplicationView();
+            Executors.newSingleThreadScheduledExecutor().scheduleAtFixedRate(() -> {
+                long c = counter.get();
+                replicationView.setReplicationTps((c - lastCounter) / 10);
+                lastCounter = c;
+            }, 10, 10, TimeUnit.SECONDS);
+        }
+
         Executors.newSingleThreadScheduledExecutor().scheduleAtFixedRate(this::asyncWakeup,
                 ITERATE_PERIOD, ITERATE_PERIOD, TimeUnit.MILLISECONDS);
     }
 
     void initialize() throws Exception {
-        TaskRunnerFactory taskRunnerFactory = broker.getBrokerService().getTaskRunnerFactory();
+        BrokerService brokerService = broker.getBrokerService();
+        TaskRunnerFactory taskRunnerFactory = brokerService.getTaskRunnerFactory();
         taskRunner = taskRunnerFactory.createTaskRunner(this, "ReplicationPlugin.Sequencer");
 
         intermediateQueue = broker.getDestinations(queueProvider.getIntermediateQueue()).stream().findFirst()
@@ -127,13 +163,26 @@ public class ReplicaSequencer implements Task {
         consumerInfo.setDestination(queueProvider.getIntermediateQueue());
         subscription = (PrefetchSubscription) broker.addConsumer(connectionContext, consumerInfo);
 
-        replicaStorage.initialize(new File(broker.getBrokerService().getBrokerDataDirectory(),
+        replicaStorage.initialize(new File(brokerService.getBrokerDataDirectory(),
                 ReplicaSupport.REPLICATION_PLUGIN_STORAGE_DIRECTORY));
 
         restoreSequence();
 
         initialized.compareAndSet(false, true);
         asyncWakeup();
+
+        if (brokerService.isUseJmx()) {
+            AnnotatedMBean.registerMBean(brokerService.getManagementContext(), replicationView, createJmxName());
+        }
+    }
+
+    private ObjectName createJmxName() throws MalformedObjectNameException {
+        String objectNameStr = broker.getBrokerService().getBrokerObjectName().toString();
+
+        objectNameStr += "," + "service=Plugins";
+        objectNameStr += "," + "instanceName=ReplicationPlugin";
+
+        return new ObjectName(objectNameStr);
     }
 
     void restoreSequence() throws Exception {
@@ -246,6 +295,8 @@ public class ReplicaSequencer implements Task {
 
                     broker.commitTransaction(connectionContext, transactionId, true);
                 }
+                counter.addAndGet(messages.size());
+
                 synchronized (messageToAck) {
                     messageToAck.removeAll(messages);
                 }
@@ -499,6 +550,7 @@ public class ReplicaSequencer implements Task {
 
         result.removeIf(reference -> toDelete.contains(reference.getMessageId()));
 
+        counter.addAndGet(toDelete.size());
         return result;
     }
 }
