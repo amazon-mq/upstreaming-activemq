@@ -40,7 +40,6 @@ import org.apache.activemq.thread.Task;
 import org.apache.activemq.thread.TaskRunner;
 import org.apache.activemq.thread.TaskRunnerFactory;
 import org.apache.activemq.util.IdGenerator;
-import org.apache.activemq.util.JMXSupport;
 import org.apache.activemq.util.LongSequenceGenerator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -70,6 +69,7 @@ public class ReplicaSequencer implements Task {
     private static final Logger logger = LoggerFactory.getLogger(ReplicaSequencer.class);
 
     private static final String SOURCE_CONSUMER_CLIENT_ID = "DUMMY_SOURCE_CONSUMER";
+    private static final String CONSUMER_SELECTOR = String.format("%s LIKE '%s'", ReplicaEventType.EVENT_TYPE_PROPERTY, ReplicaEventType.MESSAGE_ACK);
     static final int MAX_BATCH_LENGTH = 500;
     static final int MAX_BATCH_SIZE = 5_000_000; // 5 Mb
     public static final int ITERATE_PERIOD = 5_000;
@@ -82,9 +82,11 @@ public class ReplicaSequencer implements Task {
     private final Object iteratingMutex = new Object();
     private final AtomicLong pendingWakeups = new AtomicLong();
     private final AtomicLong pendingTriggeredWakeups = new AtomicLong();
+    private final ConsumerInfo ackConsumerInfo = new ConsumerInfo();
     final Set<String> deliveredMessages = new HashSet<>();
     final LinkedList<String> messageToAck = new LinkedList<>();
     private final ReplicaStorage replicaStorage;
+    private Map<ConsumerId, PrefetchSubscription> consumerMap = new HashMap<>();
 
     private final LongSequenceGenerator localTransactionIdGenerator = new LongSequenceGenerator();
     private TaskRunner taskRunner;
@@ -93,7 +95,7 @@ public class ReplicaSequencer implements Task {
     private ConnectionContext connectionContext;
 
     private PrefetchSubscription subscription;
-    private ConsumerId consumerId;
+    private PrefetchSubscription ackSubscription;
     private boolean hasConsumer;
 
     BigInteger sequence = BigInteger.ZERO;
@@ -156,12 +158,21 @@ public class ReplicaSequencer implements Task {
 
         ConnectionId connectionId = new ConnectionId(new IdGenerator("ReplicationPlugin.Sequencer").generateId());
         SessionId sessionId = new SessionId(connectionId, new LongSequenceGenerator().getNextSequenceId());
-        consumerId = new ConsumerId(sessionId, new LongSequenceGenerator().getNextSequenceId());
+        ConsumerId consumerId = new ConsumerId(sessionId, new LongSequenceGenerator().getNextSequenceId());
         ConsumerInfo consumerInfo = new ConsumerInfo();
         consumerInfo.setConsumerId(consumerId);
         consumerInfo.setPrefetchSize(10000);
         consumerInfo.setDestination(queueProvider.getIntermediateQueue());
         subscription = (PrefetchSubscription) broker.addConsumer(connectionContext, consumerInfo);
+        consumerMap.put(consumerId, subscription);
+
+        ConnectionId ackConnectionId = new ConnectionId(new IdGenerator("ReplicationPlugin.Sequencer").generateId());
+        SessionId ackSessionId = new SessionId(ackConnectionId, new LongSequenceGenerator().getNextSequenceId());
+        ConsumerId ackConsumerId = new ConsumerId(ackSessionId, new LongSequenceGenerator().getNextSequenceId());
+        ackConsumerInfo.setConsumerId(ackConsumerId);
+        ackConsumerInfo.setPrefetchSize(1000);
+        ackConsumerInfo.setDestination(queueProvider.getIntermediateQueue());
+        ackConsumerInfo.setSelector(CONSUMER_SELECTOR);
 
         replicaStorage.initialize(new File(brokerService.getBrokerDataDirectory(),
                 ReplicaSupport.REPLICATION_PLUGIN_STORAGE_DIRECTORY));
@@ -325,11 +336,25 @@ public class ReplicaSequencer implements Task {
                 if (deliveredMessages.contains(messageId.toString())) {
                     break;
                 }
+
+                ActiveMQMessage message = (ActiveMQMessage) reference.getMessage();
+
+                if (message.getTargetConsumerId() == null) {
+                    message.setTargetConsumerId(subscription.getConsumerInfo().getConsumerId());
+                }
+
                 toProcess.add(reference);
                 if (messageId.equals(recoveryMessageId)) {
                     recoveryMessage = reference;
                 }
             }
+        }
+
+        if (!hasConsumer && ackSubscription != null) {
+            List<MessageReference> ackMessages = ackSubscription.getDispatched();
+            ackMessages.forEach(messageReference -> messageReference.getMessage()
+                    .setTargetConsumerId(ackSubscription.getConsumerInfo().getConsumerId()));
+            toProcess.addAll(ackMessages);
         }
 
         if (toProcess.isEmpty()) {
@@ -416,11 +441,21 @@ public class ReplicaSequencer implements Task {
     }
 
     void updateMainQueueConsumerStatus() {
-        if (!hasConsumer && !mainQueue.getConsumers().isEmpty()) {
-            hasConsumer = !mainQueue.getConsumers().isEmpty();
-            asyncWakeup();
-        } else {
-            hasConsumer = !mainQueue.getConsumers().isEmpty();
+        try {
+            if (!hasConsumer && !mainQueue.getConsumers().isEmpty()) {
+                hasConsumer = true;
+                broker.removeConsumer(connectionContext, ackConsumerInfo);
+                consumerMap.remove(ackConsumerInfo.getConsumerId());
+                ackSubscription = null;
+
+                asyncWakeup();
+            } else if (hasConsumer && mainQueue.getConsumers().isEmpty()){
+                hasConsumer = false;
+                ackSubscription = (PrefetchSubscription) broker.addConsumer(connectionContext, ackConsumerInfo);
+                consumerMap.put(ackConsumerInfo.getConsumerId(), ackSubscription);
+            }
+        } catch (Exception error) {
+            logger.error("Failed to update replica consumer count.", error);
         }
     }
 
@@ -465,7 +500,7 @@ public class ReplicaSequencer implements Task {
     @SuppressWarnings("unchecked")
     List<MessageReference> compactAndFilter(List<MessageReference> list) throws Exception {
         List<MessageReference> result = new ArrayList<>(list);
-        Map<String, MessageId> sendMap = new LinkedHashMap<>();
+        Map<String, ActiveMQMessage> sendMap = new LinkedHashMap<>();
         Map<List<String>, ActiveMQMessage> ackMap = new LinkedHashMap<>();
         for (MessageReference reference : list) {
             ActiveMQMessage message = (ActiveMQMessage) reference.getMessage();
@@ -479,7 +514,7 @@ public class ReplicaSequencer implements Task {
                     ReplicaEventType.valueOf(message.getStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY));
             MessageId messageId = reference.getMessageId();
             if (eventType == ReplicaEventType.MESSAGE_SEND) {
-                sendMap.put(message.getStringProperty(ReplicaSupport.MESSAGE_ID_PROPERTY), messageId);
+                sendMap.put(message.getStringProperty(ReplicaSupport.MESSAGE_ID_PROPERTY), message);
             }
             if (eventType == ReplicaEventType.MESSAGE_ACK) {
                 List<String> messageIds = (List<String>)
@@ -490,7 +525,7 @@ public class ReplicaSequencer implements Task {
             }
         }
 
-        List<MessageId> toDelete = new ArrayList<>();
+        List<ActiveMQMessage> toDelete = new ArrayList<>();
 
         for (Map.Entry<List<String>, ActiveMQMessage> ack : ackMap.entrySet()) {
             List<String> sends = new ArrayList<>();
@@ -507,7 +542,7 @@ public class ReplicaSequencer implements Task {
 
             ActiveMQMessage message = ack.getValue();
             if (messagesToAck.size() == sends.size() && new HashSet<>(messagesToAck).containsAll(sends)) {
-                toDelete.add(message.getMessageId());
+                toDelete.add(message);
                 continue;
             }
 
@@ -534,14 +569,16 @@ public class ReplicaSequencer implements Task {
 
             ConsumerBrokerExchange consumerExchange = new ConsumerBrokerExchange();
             consumerExchange.setConnectionContext(connectionContext);
-            consumerExchange.setSubscription(subscription);
 
-            for (MessageId id : toDelete) {
+            for (ActiveMQMessage message : toDelete) {
                 MessageAck ack = new MessageAck();
-                ack.setMessageID(id);
+                ack.setMessageID(message.getMessageId());
                 ack.setMessageCount(1);
                 ack.setAckType(MessageAck.INDIVIDUAL_ACK_TYPE);
                 ack.setDestination(queueProvider.getIntermediateQueue());
+
+                consumerExchange.setSubscription(consumerMap.get(message.getTargetConsumerId()));
+
                 broker.acknowledge(consumerExchange, ack);
             }
 
@@ -553,4 +590,5 @@ public class ReplicaSequencer implements Task {
         counter.addAndGet(toDelete.size());
         return result;
     }
+
 }

@@ -77,6 +77,7 @@ public class ReplicaSequencerTest {
     private final ConsumerInfo consumerInfo = new ConsumerInfo(consumerId);
     private final PrefetchSubscription mainSubscription = mock(PrefetchSubscription.class);
     private final PrefetchSubscription intermediateSubscription = mock(PrefetchSubscription.class);
+    private final PrefetchSubscription ackIntermediateSubscription = mock(PrefetchSubscription.class);
 
     private final ReplicaEventSerializer eventSerializer = new ReplicaEventSerializer();
 
@@ -107,7 +108,9 @@ public class ReplicaSequencerTest {
         when(mainSubscription.getConsumerInfo()).thenReturn(consumerInfo);
         when(mainQueue.getConsumers()).thenReturn(List.of(mainSubscription));
 
-        when(broker.addConsumer(any(), any())).thenReturn(intermediateSubscription);
+        when(broker.addConsumer(any(), any()))
+                .thenReturn(intermediateSubscription)
+                .thenReturn(ackIntermediateSubscription);
 
         when(intermediateQueue.getMessageStore()).thenReturn(messageStore);
 
@@ -609,6 +612,54 @@ public class ReplicaSequencerTest {
         sequencer.iterateSend();
 
         ArgumentCaptor<MessageAck> ackCaptor = ArgumentCaptor.forClass(MessageAck.class);
+        verify(broker, times(4)).acknowledge(any(), ackCaptor.capture());
+
+        List<MessageAck> values = ackCaptor.getAllValues();
+        MessageAck messageAck = values.get(0);
+        assertThat(messageAck.getAckType()).isEqualTo(MessageAck.INDIVIDUAL_ACK_TYPE);
+        assertThat(messageAck.getMessageCount()).isEqualTo(1);
+        assertThat(messageAck.getLastMessageId()).isEqualTo(messageId1);
+        messageAck = values.get(1);
+        assertThat(messageAck.getAckType()).isEqualTo(MessageAck.INDIVIDUAL_ACK_TYPE);
+        assertThat(messageAck.getMessageCount()).isEqualTo(1);
+        assertThat(messageAck.getLastMessageId()).isEqualTo(messageId3);
+
+        verify(broker, times(2)).addConsumer(any(), any());
+        verify(replicationMessageProducer, never()).enqueueMainReplicaEvent(any(), any());
+
+    }
+
+    @Test
+    public void removeAckConsumerIfConumerAddedtoMainQueue() throws Exception {
+
+        MessageId messageId1 = new MessageId("1:0:0:1");
+        MessageId messageId2 = new MessageId("1:0:0:2");
+        MessageId messageId3 = new MessageId("1:0:0:3");
+
+        String messageIdToAck = "2:1";
+
+        ActiveMQMessage message1 = new ActiveMQMessage();
+        message1.setMessageId(messageId1);
+        message1.setBooleanProperty(ReplicaSupport.IS_ORIGINAL_MESSAGE_SENT_TO_QUEUE_PROPERTY, true);
+        message1.setStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY, ReplicaEventType.MESSAGE_SEND.toString());
+        message1.setStringProperty(ReplicaSupport.MESSAGE_ID_PROPERTY, messageIdToAck);
+        ActiveMQMessage message2 = new ActiveMQMessage();
+        message2.setMessageId(messageId2);
+        message2.setBooleanProperty(ReplicaSupport.IS_ORIGINAL_MESSAGE_SENT_TO_QUEUE_PROPERTY, true);
+        message2.setStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY, ReplicaEventType.MESSAGE_SEND.toString());
+        ActiveMQMessage message3 = new ActiveMQMessage();
+        message3.setMessageId(messageId3);
+        message3.setBooleanProperty(ReplicaSupport.IS_ORIGINAL_MESSAGE_SENT_TO_QUEUE_PROPERTY, true);
+        message3.setStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY, ReplicaEventType.MESSAGE_ACK.toString());
+        message3.setProperty(ReplicaSupport.MESSAGE_IDS_PROPERTY, List.of(messageIdToAck));
+
+        when(intermediateSubscription.getDispatched()).thenReturn(new ArrayList<>(List.of(message1, message2, message3)));
+
+        sequencer.recoveryMessageId = null;
+
+        sequencer.iterateSend();
+
+        ArgumentCaptor<MessageAck> ackCaptor = ArgumentCaptor.forClass(MessageAck.class);
         verify(broker, times(2)).acknowledge(any(), ackCaptor.capture());
 
         List<MessageAck> values = ackCaptor.getAllValues();
@@ -621,9 +672,10 @@ public class ReplicaSequencerTest {
         assertThat(messageAck.getMessageCount()).isEqualTo(1);
         assertThat(messageAck.getLastMessageId()).isEqualTo(messageId3);
 
-        verify(replicationMessageProducer, never()).enqueueMainReplicaEvent(any(), any());
+        verify(broker).addConsumer(any(), any());
+        verify(broker).removeConsumer(any(), any());
+        verify(replicationMessageProducer).enqueueMainReplicaEvent(any(), any());
     }
-
 
     private static class DummyMessageReference implements MessageReference {
 

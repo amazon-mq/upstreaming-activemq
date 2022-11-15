@@ -31,5 +31,5 @@ public enum ReplicaEventType {
     ADD_DURABLE_CONSUMER,
     BATCH;
 
-    static final String EVENT_TYPE_PROPERTY = "ActiveMQ.Replication.EventType";
+    public static final String EVENT_TYPE_PROPERTY = "ActiveMQReplicationEventType";
 }
