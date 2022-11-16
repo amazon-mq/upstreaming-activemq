@@ -60,7 +60,7 @@ public class ReplicaSequencerTest {
     private final ReplicaReplicationQueueSupplier queueProvider = mock(ReplicaReplicationQueueSupplier.class);
     private final ReplicationMessageProducer replicationMessageProducer = mock(ReplicationMessageProducer.class);
 
-    private final ReplicaSequencer sequencer = new ReplicaSequencer(broker, queueProvider, replicationMessageProducer);
+    private ReplicaSequencer sequencer;
 
     private final ActiveMQQueue intermediateQueueDestination = new ActiveMQQueue(ReplicaSupport.INTERMEDIATE_REPLICATION_QUEUE_NAME);
     private final ActiveMQQueue mainQueueDestination = new ActiveMQQueue(ReplicaSupport.MAIN_REPLICATION_QUEUE_NAME);
@@ -111,6 +111,7 @@ public class ReplicaSequencerTest {
 
         when(intermediateQueue.getMessageStore()).thenReturn(messageStore);
 
+        sequencer = new ReplicaSequencer(broker, queueProvider, replicationMessageProducer);
         sequencer.initialize();
 
         replicaStorage.initialize(storageDirectory);
