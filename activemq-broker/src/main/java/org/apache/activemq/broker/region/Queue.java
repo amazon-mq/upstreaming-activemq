@@ -1560,6 +1560,62 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
     }
 
     /**
+     * Copies the messages matching the given selector up to the maximum number
+     * of matched messages
+     *
+     * @return the list messages matching the selector
+     */
+    public List<MessageReference> getMatchingMessages(ConnectionContext context, String selector, int maximumMessages) throws Exception {
+        return getMatchingMessages(context, createSelectorFilter(selector), maximumMessages);
+    }
+
+    /**
+     * Gets the messages matching the given filter up to the maximum number of
+     * matched messages
+     *
+     * @return the list messages matching the filter
+     */
+    public List<MessageReference> getMatchingMessages(ConnectionContext context, MessageReferenceFilter filter, int maximumMessages) throws Exception {
+        Set<MessageReference> set = new LinkedHashSet<MessageReference>();
+
+        pagedInMessagesLock.readLock().lock();
+        try {
+            Iterator<MessageReference> iterator = pagedInMessages.iterator();
+
+            while (iterator.hasNext() && set.size() < maximumMessages) {
+                MessageReference mr = iterator.next();
+                if (filter.evaluate(context, mr)) {
+                    set.add(mr);
+                }
+            }
+        } finally {
+            pagedInMessagesLock.readLock().unlock();
+        }
+
+        if (set.size() == maximumMessages) {
+            return new ArrayList<>(set);
+        }
+        messagesLock.writeLock().lock();
+        try {
+            try {
+                messages.reset();
+                while (messages.hasNext() && set.size() < maximumMessages) {
+                    MessageReference mr = messages.next();
+                    if (filter.evaluate(context, mr)) {
+                        set.add(mr);
+                    }
+
+                }
+            } finally {
+                messages.release();
+            }
+        } finally {
+            messagesLock.writeLock().unlock();
+        }
+        return new ArrayList<>(set);
+    }
+
+    /**
      * Move a message
      *
      * @param context
