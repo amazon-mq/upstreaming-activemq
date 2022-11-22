@@ -31,6 +31,7 @@ import org.apache.activemq.command.ConsumerId;
 import org.apache.activemq.command.ConsumerInfo;
 import org.apache.activemq.command.DataStructure;
 import org.apache.activemq.command.LocalTransactionId;
+import org.apache.activemq.command.Message;
 import org.apache.activemq.command.MessageAck;
 import org.apache.activemq.command.MessageId;
 import org.apache.activemq.command.SessionId;
@@ -64,6 +65,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Collectors;
 
 public class ReplicaSequencer implements Task {
     private static final Logger logger = LoggerFactory.getLogger(ReplicaSequencer.class);
@@ -89,6 +91,8 @@ public class ReplicaSequencer implements Task {
     private Map<ConsumerId, PrefetchSubscription> consumerMap = new HashMap<>();
 
     private final LongSequenceGenerator localTransactionIdGenerator = new LongSequenceGenerator();
+    private final LongSequenceGenerator sessionIdGenerator = new LongSequenceGenerator();
+    private final LongSequenceGenerator customerIdGenerator = new LongSequenceGenerator();
     private TaskRunner taskRunner;
     private Queue intermediateQueue;
     private Queue mainQueue;
@@ -157,8 +161,8 @@ public class ReplicaSequencer implements Task {
         }
 
         ConnectionId connectionId = new ConnectionId(new IdGenerator("ReplicationPlugin.Sequencer").generateId());
-        SessionId sessionId = new SessionId(connectionId, new LongSequenceGenerator().getNextSequenceId());
-        ConsumerId consumerId = new ConsumerId(sessionId, new LongSequenceGenerator().getNextSequenceId());
+        SessionId sessionId = new SessionId(connectionId, sessionIdGenerator.getNextSequenceId());
+        ConsumerId consumerId = new ConsumerId(sessionId, customerIdGenerator.getNextSequenceId());
         ConsumerInfo consumerInfo = new ConsumerInfo();
         consumerInfo.setConsumerId(consumerId);
         consumerInfo.setPrefetchSize(10000);
@@ -167,8 +171,8 @@ public class ReplicaSequencer implements Task {
         consumerMap.put(consumerId, subscription);
 
         ConnectionId ackConnectionId = new ConnectionId(new IdGenerator("ReplicationPlugin.Sequencer").generateId());
-        SessionId ackSessionId = new SessionId(ackConnectionId, new LongSequenceGenerator().getNextSequenceId());
-        ConsumerId ackConsumerId = new ConsumerId(ackSessionId, new LongSequenceGenerator().getNextSequenceId());
+        SessionId ackSessionId = new SessionId(ackConnectionId, sessionIdGenerator.getNextSequenceId());
+        ConsumerId ackConsumerId = new ConsumerId(ackSessionId, customerIdGenerator.getNextSequenceId());
         ackConsumerInfo.setConsumerId(ackConsumerId);
         ackConsumerInfo.setPrefetchSize(1000);
         ackConsumerInfo.setDestination(queueProvider.getIntermediateQueue());
@@ -512,7 +516,6 @@ public class ReplicaSequencer implements Task {
 
             ReplicaEventType eventType =
                     ReplicaEventType.valueOf(message.getStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY));
-            MessageId messageId = reference.getMessageId();
             if (eventType == ReplicaEventType.MESSAGE_SEND) {
                 sendMap.put(message.getStringProperty(ReplicaSupport.MESSAGE_ID_PROPERTY), message);
             }
@@ -550,6 +553,7 @@ public class ReplicaSequencer implements Task {
             ArrayList<String> newList = new ArrayList<>(messagesToAck);
             newList.removeAll(sends);
             message.setProperty(ReplicaSupport.MESSAGE_IDS_PROPERTY, newList);
+            message.setTargetConsumerId(null);
 
             synchronized (ReplicaSupport.INTERMEDIATE_QUEUE_MUTEX) {
                 intermediateQueue.getMessageStore().updateMessage(message);
@@ -585,7 +589,8 @@ public class ReplicaSequencer implements Task {
             broker.commitTransaction(connectionContext, transactionId, true);
         }
 
-        result.removeIf(reference -> toDelete.contains(reference.getMessageId()));
+        List<MessageId> toDeleteIds = toDelete.stream().map(Message::getMessageId).collect(Collectors.toList());
+        result.removeIf(reference -> toDeleteIds.contains(reference.getMessageId()));
 
         counter.addAndGet(toDelete.size());
         return result;
