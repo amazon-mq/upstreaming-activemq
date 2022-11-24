@@ -136,14 +136,7 @@ public class ReplicaBrokerEventListener implements MessageListener {
         logger.trace("Received replication message from replica source");
         ActiveMQMessage message = (ActiveMQMessage) jmsMessage;
 
-        try {
-            processMessageWithRetries(message, null);
-
-            message.acknowledge();
-        } catch (JMSException e) {
-            acknowledgeCallback.setSafeToAck(false);
-            logger.error("Failed to acknowledge replication message (id={})", message.getMessageId());
-        }
+        processMessageWithRetries(message, null);
     }
 
     private synchronized void processMessageWithRetries(ActiveMQMessage message, TransactionId transactionId) {
@@ -198,11 +191,13 @@ public class ReplicaBrokerEventListener implements MessageListener {
                     replicaInternalMessageProducer.sendIgnoringFlowControl(seqMessage);
 
                     broker.commitTransaction(connectionContext, tid, true);
+                    acknowledgeCallback.setSafeToAck(true);
                 }
             } catch (Exception e) {
                 if (commit) {
                     broker.rollbackTransaction(connectionContext, tid);
                 }
+                acknowledgeCallback.setSafeToAck(false);
                 throw e;
             }
             return null;
