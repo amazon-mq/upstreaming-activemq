@@ -24,6 +24,7 @@ import org.apache.activemq.broker.jmx.AnnotatedMBean;
 import org.apache.activemq.broker.region.MessageReference;
 import org.apache.activemq.broker.region.PrefetchSubscription;
 import org.apache.activemq.broker.region.Queue;
+import org.apache.activemq.broker.region.QueueMessageReference;
 import org.apache.activemq.command.ActiveMQMessage;
 import org.apache.activemq.command.Command;
 import org.apache.activemq.command.ConnectionId;
@@ -349,7 +350,7 @@ public class ReplicaSequencer implements Task {
 
         if (!hasConsumer) {
             try {
-                List<MessageReference> messagesToCompact = intermediateQueue.getMatchingMessages(connectionContext, ACK_SELECTOR, MAXIMUM_MESSAGES);
+                List<QueueMessageReference> messagesToCompact = intermediateQueue.getMatchingMessages(connectionContext, ACK_SELECTOR, MAXIMUM_MESSAGES);
                 if (!messagesToCompact.isEmpty()) {
                     String selector = String.format("%s IN %s", ReplicaSupport.MESSAGE_ID_PROPERTY,  getAckedMessageIds(messagesToCompact));
                     messagesToCompact.addAll(intermediateQueue.getMatchingMessages(connectionContext, selector, MAXIMUM_MESSAGES));
@@ -593,7 +594,7 @@ public class ReplicaSequencer implements Task {
         return result;
     }
 
-    private String getAckedMessageIds(List<MessageReference> ackMessages) {
+    private String getAckedMessageIds(List<QueueMessageReference> ackMessages) {
         return ackMessages.stream()
                 .map(messageReference -> {
                     List<String> messageIds = new ArrayList<>();

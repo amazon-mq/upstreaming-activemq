@@ -1565,7 +1565,7 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
      *
      * @return the list messages matching the selector
      */
-    public List<MessageReference> getMatchingMessages(ConnectionContext context, String selector, int maximumMessages) throws Exception {
+    public List<QueueMessageReference> getMatchingMessages(ConnectionContext context, String selector, int maximumMessages) throws Exception {
         return getMatchingMessages(context, createSelectorFilter(selector), maximumMessages);
     }
 
@@ -1575,17 +1575,17 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
      *
      * @return the list messages matching the filter
      */
-    public List<MessageReference> getMatchingMessages(ConnectionContext context, MessageReferenceFilter filter, int maximumMessages) throws Exception {
-        Set<MessageReference> set = new LinkedHashSet<MessageReference>();
+    public List<QueueMessageReference> getMatchingMessages(ConnectionContext context, MessageReferenceFilter filter, int maximumMessages) throws Exception {
+        Set<QueueMessageReference> set = new LinkedHashSet<>();
 
         pagedInMessagesLock.readLock().lock();
         try {
             Iterator<MessageReference> iterator = pagedInMessages.iterator();
 
             while (iterator.hasNext() && set.size() < maximumMessages) {
-                MessageReference mr = iterator.next();
-                if (filter.evaluate(context, mr)) {
-                    set.add(mr);
+                QueueMessageReference qmr = (QueueMessageReference) iterator.next();
+                if (filter.evaluate(context, qmr)) {
+                    set.add(qmr);
                 }
             }
         } finally {
@@ -1601,8 +1601,11 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
                 messages.reset();
                 while (messages.hasNext() && set.size() < maximumMessages) {
                     MessageReference mr = messages.next();
-                    if (filter.evaluate(context, mr)) {
-                        set.add(mr);
+                    QueueMessageReference qmr = createMessageReference(mr.getMessage());
+                    qmr.decrementReferenceCount();
+                    messages.rollback(qmr.getMessageId());
+                    if (filter.evaluate(context, qmr)) {
+                        set.add(qmr);
                     }
 
                 }
