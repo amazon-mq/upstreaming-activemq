@@ -480,6 +480,11 @@ public class ReplicaSourceBroker extends ReplicaSourceBaseBroker {
 
     @Override
     public void acknowledge(ConsumerBrokerExchange consumerExchange, MessageAck ack) throws Exception {
+        if (ack.isDeliveredAck() || ack.isUnmatchedAck()) {
+            super.acknowledge(consumerExchange, ack);
+            return;
+        }
+
         if (ReplicaSupport.MAIN_REPLICATION_QUEUE_NAME.equals(ack.getDestination().getPhysicalName())) {
             replicaSequencer.acknowledge(consumerExchange, ack);
             return;
