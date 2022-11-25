@@ -167,7 +167,6 @@ public class ReplicaSourceBrokerTest {
         source.addConsumer(connectionContext, consumerInfo);
 
         verify(broker).addConsumer(eq(connectionContext), eq(consumerInfo));
-        verify(replicaSequencer).updateMainQueueConsumerStatus();
     }
 
     @Test(expected = ActiveMQReplicaException.class)
@@ -179,7 +178,6 @@ public class ReplicaSourceBrokerTest {
         ConsumerInfo consumerInfo = new ConsumerInfo();
         consumerInfo.setDestination(queueProvider.getMainQueue());
         source.addConsumer(connectionContext, consumerInfo);
-        verify(replicaSequencer, never()).updateMainQueueConsumerStatus();
     }
 
     @Test
@@ -194,7 +192,6 @@ public class ReplicaSourceBrokerTest {
         source.addConsumer(connectionContext, consumerInfo);
 
         verify(broker).addConsumer(eq(connectionContext), eq(consumerInfo));
-        verify(replicaSequencer, never()).updateMainQueueConsumerStatus();
     }
 
     @Test
@@ -208,7 +205,6 @@ public class ReplicaSourceBrokerTest {
         source.addConsumer(connectionContext, consumerInfo);
 
         verify(broker).addConsumer(eq(connectionContext), eq(consumerInfo));
-        verify(replicaSequencer, never()).updateMainQueueConsumerStatus();
     }
 
     @Test(expected = ActiveMQReplicaException.class)
@@ -220,7 +216,6 @@ public class ReplicaSourceBrokerTest {
         ConsumerInfo consumerInfo = new ConsumerInfo();
         consumerInfo.setDestination(testDestination);
         source.addConsumer(connectionContext, consumerInfo);
-        verify(replicaSequencer, never()).updateMainQueueConsumerStatus();
     }
 
     @Test
@@ -246,8 +241,6 @@ public class ReplicaSourceBrokerTest {
         final ConsumerInfo ackMessage = (ConsumerInfo) eventSerializer.deserializeMessageData(replicaMessage.getContent());
         assertThat(ackMessage.getDestination()).isEqualTo(destination);
         verifyConnectionContext(connectionContext);
-
-        verify(replicaSequencer, never()).updateMainQueueConsumerStatus();
     }
 
     @Test
@@ -273,8 +266,6 @@ public class ReplicaSourceBrokerTest {
         final ConsumerInfo ackMessage = (ConsumerInfo) eventSerializer.deserializeMessageData(replicaMessage.getContent());
         assertThat(ackMessage.getDestination()).isEqualTo(destination);
         verifyConnectionContext(connectionContext);
-
-        verify(replicaSequencer, never()).updateMainQueueConsumerStatus();
     }
 
     @Test(expected = ActiveMQReplicaException.class)
