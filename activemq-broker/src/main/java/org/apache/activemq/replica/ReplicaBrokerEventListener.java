@@ -79,14 +79,14 @@ public class ReplicaBrokerEventListener implements MessageListener {
     private final ProducerId replicationProducerId = new ProducerId();
     private final LongSequenceGenerator eventMessageIdGenerator = new LongSequenceGenerator();
     private PrefetchSubscription subscription;
-    private final PeriodAcknowledge<Void> acknowledgeCallback;
+    private final PeriodAcknowledge acknowledgeCallback;
 
     BigInteger sequence;
 
     private final int NUMBER_OF_MESSAGES_TO_LOG = 1000;
     private int messagesProcessed = 0;
 
-    ReplicaBrokerEventListener(Broker broker, ReplicaReplicationQueueSupplier queueProvider, PeriodAcknowledge<Void> acknowledgeCallback) {
+    ReplicaBrokerEventListener(Broker broker, ReplicaReplicationQueueSupplier queueProvider, PeriodAcknowledge acknowledgeCallback) {
         this.broker = requireNonNull(broker);
         this.acknowledgeCallback = requireNonNull(acknowledgeCallback);
         connectionContext = broker.getAdminConnectionContext().copy();
