@@ -214,6 +214,7 @@ public class ReplicaSequencerTest {
 
         ActiveMQMessage message = new ActiveMQMessage();
         message.setMessageId(messageId);
+        message.setStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY, ReplicaEventType.MESSAGE_SEND.toString());
 
         when(intermediateSubscription.getDispatched()).thenReturn(List.of(message));
 
@@ -240,10 +241,13 @@ public class ReplicaSequencerTest {
 
         ActiveMQMessage message1 = new ActiveMQMessage();
         message1.setMessageId(messageId1);
+        message1.setStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY, ReplicaEventType.MESSAGE_SEND.toString());
         ActiveMQMessage message2 = new ActiveMQMessage();
         message2.setMessageId(messageId2);
+        message2.setStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY, ReplicaEventType.MESSAGE_SEND.toString());
         ActiveMQMessage message3 = new ActiveMQMessage();
         message3.setMessageId(messageId3);
+        message3.setStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY, ReplicaEventType.MESSAGE_SEND.toString());
 
         when(intermediateSubscription.getDispatched()).thenReturn(new ArrayList<>(List.of(message1, message2, message3)));
 
@@ -273,10 +277,13 @@ public class ReplicaSequencerTest {
 
         ActiveMQMessage message1 = new ActiveMQMessage();
         message1.setMessageId(messageId1);
+        message1.setStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY, ReplicaEventType.MESSAGE_SEND.toString());
         ActiveMQMessage message2 = new ActiveMQMessage();
         message2.setMessageId(messageId2);
+        message2.setStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY, ReplicaEventType.MESSAGE_SEND.toString());
         ActiveMQMessage message3 = new ActiveMQMessage();
         message3.setMessageId(messageId3);
+        message3.setStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY, ReplicaEventType.MESSAGE_SEND.toString());
 
         when(intermediateSubscription.getDispatched()).thenReturn(new ArrayList<>(List.of(message1, message2, message3)));
 
@@ -306,10 +313,13 @@ public class ReplicaSequencerTest {
 
         ActiveMQMessage message1 = new ActiveMQMessage();
         message1.setMessageId(messageId1);
+        message1.setStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY, ReplicaEventType.MESSAGE_SEND.toString());
         ActiveMQMessage message2 = new ActiveMQMessage();
         message2.setMessageId(messageId2);
+        message2.setStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY, ReplicaEventType.MESSAGE_SEND.toString());
         ActiveMQMessage message3 = new ActiveMQMessage();
         message3.setMessageId(messageId3);
+        message3.setStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY, ReplicaEventType.MESSAGE_SEND.toString());
 
         when(intermediateSubscription.getDispatched()).thenReturn(new ArrayList<>(List.of(message1, message2, message3)));
 
