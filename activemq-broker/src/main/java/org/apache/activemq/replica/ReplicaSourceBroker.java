@@ -48,7 +48,6 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.net.URI;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
@@ -65,7 +64,6 @@ public class ReplicaSourceBroker extends ReplicaSourceBaseBroker {
     private final URI transportConnectorUri;
 
     final DestinationMap destinationsToReplicate = new DestinationMap();
-    private final LongSequenceGenerator localTransactionIdGenerator = new LongSequenceGenerator();
 
     public ReplicaSourceBroker(Broker next, ReplicationMessageProducer replicationMessageProducer,
             ReplicaSequencer replicaSequencer, ReplicaReplicationQueueSupplier queueProvider, URI transportConnectorUri) {
@@ -80,6 +78,7 @@ public class ReplicaSourceBroker extends ReplicaSourceBaseBroker {
         TransportConnector transportConnector = next.getBrokerService().addConnector(transportConnectorUri);
         transportConnector.setName(REPLICATION_CONNECTOR_NAME);
         queueProvider.initialize();
+        queueProvider.initializeSequenceQueue();
         super.start();
         replicaSequencer.initialize();
         ensureDestinationsAreReplicated();
@@ -427,7 +426,7 @@ public class ReplicaSourceBroker extends ReplicaSourceBaseBroker {
             transactionId = messageSend.getTransactionId();
         } else if (messageSend.getTransactionId() == null) {
             transactionId = new LocalTransactionId(new ConnectionId(ReplicaSupport.REPLICATION_PLUGIN_CONNECTION_ID),
-                    localTransactionIdGenerator.getNextSequenceId());
+                    ReplicaSupport.LOCAL_TRANSACTION_ID_GENERATOR.getNextSequenceId());
             super.beginTransaction(connectionContext, transactionId);
             messageSend.setTransactionId(transactionId);
             isInternalTransaction = true;
@@ -519,7 +518,7 @@ public class ReplicaSourceBroker extends ReplicaSourceBaseBroker {
             transactionId = ack.getTransactionId();
         } else if (ack.getTransactionId() == null) {
             transactionId = new LocalTransactionId(new ConnectionId(ReplicaSupport.REPLICATION_PLUGIN_CONNECTION_ID),
-                    localTransactionIdGenerator.getNextSequenceId());
+                    ReplicaSupport.LOCAL_TRANSACTION_ID_GENERATOR.getNextSequenceId());
             super.beginTransaction(connectionContext, transactionId);
             ack.setTransactionId(transactionId);
             isInternalTransaction = true;

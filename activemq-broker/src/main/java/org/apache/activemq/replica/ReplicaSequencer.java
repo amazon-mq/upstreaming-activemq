@@ -32,6 +32,7 @@ import org.apache.activemq.command.ConsumerInfo;
 import org.apache.activemq.command.DataStructure;
 import org.apache.activemq.command.LocalTransactionId;
 import org.apache.activemq.command.MessageAck;
+import org.apache.activemq.command.MessageDispatch;
 import org.apache.activemq.command.MessageId;
 import org.apache.activemq.command.SessionId;
 import org.apache.activemq.command.TransactionId;
@@ -45,7 +46,6 @@ import org.slf4j.LoggerFactory;
 
 import javax.management.MalformedObjectNameException;
 import javax.management.ObjectName;
-import java.io.File;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -63,10 +63,12 @@ public class ReplicaSequencer {
     private static final Logger logger = LoggerFactory.getLogger(ReplicaSequencer.class);
 
     private static final String SOURCE_CONSUMER_CLIENT_ID = "DUMMY_SOURCE_CONSUMER";
+    private static final String SEQUENCE_NAME = "primarySeq";
     public static final int ITERATE_SEND_PERIOD = 5_000;
 
     private final Broker broker;
     private final ReplicaReplicationQueueSupplier queueProvider;
+    private final ReplicaInternalMessageProducer replicaInternalMessageProducer;
     private final ReplicationMessageProducer replicationMessageProducer;
     private final ReplicaEventSerializer eventSerializer = new ReplicaEventSerializer();
 
@@ -77,11 +79,8 @@ public class ReplicaSequencer {
     private final AtomicLong pendingSendTriggeredWakeups = new AtomicLong();
     final Set<String> deliveredMessages = new HashSet<>();
     final LinkedList<String> messageToAck = new LinkedList<>();
-    private final ReplicaStorage replicaStorage;
     private final ReplicaAckHelper replicaAckHelper;
     ReplicaCompactor replicaCompactor;
-
-    private final LongSequenceGenerator localTransactionIdGenerator = new LongSequenceGenerator();
     private final LongSequenceGenerator sessionIdGenerator = new LongSequenceGenerator();
     private final LongSequenceGenerator customerIdGenerator = new LongSequenceGenerator();
     private TaskRunner ackTaskRunner;
@@ -91,6 +90,7 @@ public class ReplicaSequencer {
 
     private PrefetchSubscription subscription;
     boolean hasConsumer;
+    ReplicaSequenceStorage sequenceStorage;
 
     BigInteger sequence = BigInteger.ZERO;
     MessageId recoveryMessageId;
@@ -104,13 +104,13 @@ public class ReplicaSequencer {
     private long lastTpsCounter;
 
     public ReplicaSequencer(Broker broker, ReplicaReplicationQueueSupplier queueProvider,
+            ReplicaInternalMessageProducer replicaInternalMessageProducer,
             ReplicationMessageProducer replicationMessageProducer) {
         this.broker = broker;
         this.queueProvider = queueProvider;
+        this.replicaInternalMessageProducer = replicaInternalMessageProducer;
         this.replicationMessageProducer = replicationMessageProducer;
-        this.replicaStorage = new ReplicaStorage("source_sequence");
         this.replicaAckHelper = new ReplicaAckHelper(broker);
-
         if (broker.getBrokerService().isUseJmx()) {
             replicationView = new ReplicationView();
             Executors.newSingleThreadScheduledExecutor().scheduleAtFixedRate(() -> {
@@ -119,7 +119,6 @@ public class ReplicaSequencer {
                 lastTpsCounter = c;
             }, 10, 10, TimeUnit.SECONDS);
         }
-
         Executors.newSingleThreadScheduledExecutor().scheduleAtFixedRate(this::asyncSendWakeup,
                 ITERATE_SEND_PERIOD, ITERATE_SEND_PERIOD, TimeUnit.MILLISECONDS);
     }
@@ -135,22 +134,9 @@ public class ReplicaSequencer {
         mainQueue = broker.getDestinations(queueProvider.getMainQueue()).stream().findFirst()
                 .map(DestinationExtractor::extractQueue).orElseThrow();
 
-        connectionContext = broker.getAdminConnectionContext().copy();
-        connectionContext.setClientId(SOURCE_CONSUMER_CLIENT_ID);
-        connectionContext.setConnection(new DummyConnection() {
-            @Override
-            public void dispatchAsync(Command command) {
-                asyncSendWakeup();
-            }
-
-            @Override
-            public void dispatchSync(Command message) {
-                asyncSendWakeup();
-            }
-        });
-        if (connectionContext.getTransactions() == null) {
-            connectionContext.setTransactions(new ConcurrentHashMap<>());
-        }
+        this.connectionContext = createConnectionContext();
+        this.sequenceStorage = new ReplicaSequenceStorage(broker, connectionContext,
+                queueProvider, replicaInternalMessageProducer, SEQUENCE_NAME);
 
         ConnectionId connectionId = new ConnectionId(new IdGenerator("ReplicationPlugin.Sequencer").generateId());
         SessionId sessionId = new SessionId(connectionId, sessionIdGenerator.getNextSequenceId());
@@ -163,10 +149,8 @@ public class ReplicaSequencer {
 
         replicaCompactor = new ReplicaCompactor(broker, connectionContext, queueProvider, subscription, tpsCounter);
 
-        replicaStorage.initialize(new File(brokerService.getBrokerDataDirectory(),
-                ReplicaSupport.REPLICATION_PLUGIN_STORAGE_DIRECTORY));
-
-        restoreSequence(intermediateQueue);
+        String savedSequence = sequenceStorage.initialize();
+        restoreSequence(savedSequence, intermediateQueue);
 
         initialized.compareAndSet(false, true);
         asyncSendWakeup();
@@ -185,12 +169,11 @@ public class ReplicaSequencer {
         return new ObjectName(objectNameStr);
     }
 
-    void restoreSequence(Queue intermediateQueue) throws Exception {
-        String line = replicaStorage.read();
-        if (line == null) {
+    void restoreSequence(String savedSequence, Queue intermediateQueue) throws Exception {
+        if (savedSequence == null) {
             return;
         }
-        String[] split = line.split("#");
+        String[] split = savedSequence.split("#");
         if (split.length != 2) {
             return;
         }
@@ -287,7 +270,7 @@ public class ReplicaSequencer {
             try {
                 TransactionId transactionId = new LocalTransactionId(
                         new ConnectionId(ReplicaSupport.REPLICATION_PLUGIN_CONNECTION_ID),
-                        localTransactionIdGenerator.getNextSequenceId());
+                        ReplicaSupport.LOCAL_TRANSACTION_ID_GENERATOR.getNextSequenceId());
                 ack.setTransactionId(transactionId);
 
                 synchronized (ReplicaSupport.INTERMEDIATE_QUEUE_MUTEX) {
@@ -429,7 +412,7 @@ public class ReplicaSequencer {
 
         if (lastProcessedMessageId != null) {
             try {
-                replicaStorage.write(sequence.toString() + "#" + lastProcessedMessageId);
+                sequenceStorage.enqueue(sequence.toString() + "#" + lastProcessedMessageId);
             } catch (Exception e) {
                 logger.error("Filed to write source sequence to disk", e);
             }
@@ -451,5 +434,29 @@ public class ReplicaSequencer {
         } catch (Exception error) {
             logger.error("Failed to update replica consumer count.", error);
         }
+    }
+
+    private ConnectionContext createConnectionContext() {
+        ConnectionContext connectionContext = broker.getAdminConnectionContext().copy();
+        connectionContext.setClientId(SOURCE_CONSUMER_CLIENT_ID);
+        connectionContext.setConnection(new DummyConnection() {
+            @Override
+            public void dispatchAsync(Command command) {
+                dispatchSync(command);
+            }
+
+            @Override
+            public void dispatchSync(Command command) {
+                MessageDispatch messageDispatch = (MessageDispatch) (command.isMessageDispatch() ? command : null);
+                if (messageDispatch != null && ReplicaSupport.isIntermediateReplicationQueue(messageDispatch.getDestination())) {
+                    asyncSendWakeup();
+                }
+            }
+        });
+        if (connectionContext.getTransactions() == null) {
+            connectionContext.setTransactions(new ConcurrentHashMap<>());
+        }
+
+        return connectionContext;
     }
 }
