@@ -2467,6 +2467,25 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
         Subscription sub = getMatchingSubscription(messageDispatchNotification);
         if (sub != null) {
             MessageReference message = getMatchingMessage(messageDispatchNotification);
+
+            pagedInMessagesLock.writeLock().lock();
+            try {
+                if (!pagedInMessages.contains(message)) {
+                    pagedInMessages.addMessageLast(message);
+                }
+            } finally {
+                pagedInMessagesLock.writeLock().unlock();
+            }
+
+            pagedInPendingDispatchLock.writeLock().lock();
+            try {
+                if (dispatchPendingList.contains(message)) {
+                    dispatchPendingList.remove(message);
+                }
+            } finally {
+                pagedInPendingDispatchLock.writeLock().unlock();
+            }
+
             sub.add(message);
             sub.processMessageDispatchNotification(messageDispatchNotification);
         }
