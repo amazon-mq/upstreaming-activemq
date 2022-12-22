@@ -58,6 +58,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Collectors;
 
 public class ReplicaSequencer {
     private static final Logger logger = LoggerFactory.getLogger(ReplicaSequencer.class);
@@ -207,6 +208,19 @@ public class ReplicaSequencer {
         asyncAckWakeup();
     }
 
+    void updateMainQueueConsumerStatus() {
+        try {
+            if (!hasConsumer && !mainQueue.getConsumers().isEmpty()) {
+                hasConsumer = true;
+                asyncSendWakeup();
+            } else if (hasConsumer && mainQueue.getConsumers().isEmpty()) {
+                hasConsumer = false;
+            }
+        } catch (Exception error) {
+            logger.error("Failed to update replica consumer count.", error);
+        }
+    }
+
     void asyncAckWakeup() {
         try {
             pendingAckWakeups.incrementAndGet();
@@ -267,14 +281,16 @@ public class ReplicaSequencer {
         }
 
         if (!messages.isEmpty()) {
+            TransactionId transactionId = new LocalTransactionId(
+                    new ConnectionId(ReplicaSupport.REPLICATION_PLUGIN_CONNECTION_ID),
+                    ReplicaSupport.LOCAL_TRANSACTION_ID_GENERATOR.getNextSequenceId());
+            boolean rollbackOnFail = false;
             try {
-                TransactionId transactionId = new LocalTransactionId(
-                        new ConnectionId(ReplicaSupport.REPLICATION_PLUGIN_CONNECTION_ID),
-                        ReplicaSupport.LOCAL_TRANSACTION_ID_GENERATOR.getNextSequenceId());
                 ack.setTransactionId(transactionId);
 
                 synchronized (ReplicaSupport.INTERMEDIATE_QUEUE_MUTEX) {
                     broker.beginTransaction(connectionContext, transactionId);
+                    rollbackOnFail = true;
 
                     ConsumerBrokerExchange consumerExchange = new ConsumerBrokerExchange();
                     consumerExchange.setConnectionContext(connectionContext);
@@ -295,6 +311,13 @@ public class ReplicaSequencer {
                 }
             } catch (Exception e) {
                 logger.error("Could not acknowledge replication messages", e);
+                if (rollbackOnFail) {
+                    try {
+                        broker.rollbackTransaction(connectionContext, transactionId);
+                    } catch (Exception ex) {
+                        logger.error("Could not rollback transaction", ex);
+                    }
+                }
             }
         }
     }
@@ -371,51 +394,39 @@ public class ReplicaSequencer {
             return;
         }
 
-        MessageId lastProcessedMessageId = null;
-        for (List<MessageReference> batch : batches) {
-            try {
-                List<String> messageIds = new ArrayList<>();
-                List<DataStructure> messages = new ArrayList<>();
-                for (MessageReference reference : batch) {
-                    ActiveMQMessage originalMessage = (ActiveMQMessage) reference.getMessage();
-                    sequence = sequence.add(BigInteger.ONE);
+        TransactionId transactionId = new LocalTransactionId(
+                new ConnectionId(ReplicaSupport.REPLICATION_PLUGIN_CONNECTION_ID),
+                ReplicaSupport.LOCAL_TRANSACTION_ID_GENERATOR.getNextSequenceId());
+        boolean rollbackOnFail = false;
 
-                    ActiveMQMessage message = (ActiveMQMessage) originalMessage.copy();
+        try {
+            broker.beginTransaction(connectionContext, transactionId);
 
-                    message.setStringProperty(ReplicaSupport.SEQUENCE_PROPERTY, sequence.toString());
-
-                    message.setDestination(null);
-                    message.setTransactionId(null);
-                    message.setPersistent(false);
-
-                    messageIds.add(reference.getMessageId().toString());
-                    messages.add(message);
-                }
-
-                ReplicaEvent replicaEvent = new ReplicaEvent()
-                        .setEventType(ReplicaEventType.BATCH)
-                        .setEventData(eventSerializer.serializeListOfObjects(messages))
-                        .setReplicationProperty(ReplicaSupport.MESSAGE_IDS_PROPERTY, messageIds);
-
-                replicationMessageProducer.enqueueMainReplicaEvent(connectionContext, replicaEvent);
-
-                synchronized (deliveredMessages) {
-                    deliveredMessages.addAll(messageIds);
-                }
-                lastProcessedMessageId = batch.get(batch.size() - 1).getMessageId();
-            } catch (Exception e) {
-                sequence = sequence.subtract(BigInteger.valueOf(batch.size()));
-                logger.error("Filed to persist message in the main replication queue", e);
-                break;
+            BigInteger newSequence = sequence;
+            for (List<MessageReference> batch : batches) {
+                rollbackOnFail = true;
+                newSequence = enqueueReplicaEvent(batch, newSequence, transactionId);
             }
+
+            sequenceStorage.enqueue(transactionId, newSequence.toString() + "#" + toProcess.get(toProcess.size() - 1).getMessageId());
+
+            broker.commitTransaction(connectionContext, transactionId, true);
+
+            sequence = newSequence;
+        } catch (Exception e) {
+            logger.error("Failed to persist messages in the main replication queue", e);
+            if (rollbackOnFail) {
+                try {
+                    broker.rollbackTransaction(connectionContext, transactionId);
+                } catch (Exception ex) {
+                    logger.error("Could not rollback transaction", ex);
+                }
+            }
+            return;
         }
 
-        if (lastProcessedMessageId != null) {
-            try {
-                sequenceStorage.enqueue(sequence.toString() + "#" + lastProcessedMessageId);
-            } catch (Exception e) {
-                logger.error("Filed to write source sequence to disk", e);
-            }
+        synchronized (deliveredMessages) {
+            deliveredMessages.addAll(toProcess.stream().map(MessageReference::getMessageId).map(MessageId::toString).collect(Collectors.toList()));
         }
 
         if (recoveryMessage != null) {
@@ -423,17 +434,34 @@ public class ReplicaSequencer {
         }
     }
 
-    void updateMainQueueConsumerStatus() {
-        try {
-            if (!hasConsumer && !mainQueue.getConsumers().isEmpty()) {
-                hasConsumer = true;
-                asyncSendWakeup();
-            } else if (hasConsumer && mainQueue.getConsumers().isEmpty()) {
-                hasConsumer = false;
-            }
-        } catch (Exception error) {
-            logger.error("Failed to update replica consumer count.", error);
+    private BigInteger enqueueReplicaEvent(List<MessageReference> batch, BigInteger sequence, TransactionId transactionId) throws Exception {
+        List<String> messageIds = new ArrayList<>();
+        List<DataStructure> messages = new ArrayList<>();
+        for (MessageReference reference : batch) {
+            ActiveMQMessage originalMessage = (ActiveMQMessage) reference.getMessage();
+            sequence = sequence.add(BigInteger.ONE);
+
+            ActiveMQMessage message = (ActiveMQMessage) originalMessage.copy();
+
+            message.setStringProperty(ReplicaSupport.SEQUENCE_PROPERTY, sequence.toString());
+
+            message.setDestination(null);
+            message.setTransactionId(null);
+            message.setPersistent(false);
+
+            messageIds.add(reference.getMessageId().toString());
+            messages.add(message);
         }
+
+        ReplicaEvent replicaEvent = new ReplicaEvent()
+                .setEventType(ReplicaEventType.BATCH)
+                .setEventData(eventSerializer.serializeListOfObjects(messages))
+                .setTransactionId(transactionId)
+                .setReplicationProperty(ReplicaSupport.MESSAGE_IDS_PROPERTY, messageIds);
+
+        replicationMessageProducer.enqueueMainReplicaEvent(connectionContext, replicaEvent);
+
+        return sequence;
     }
 
     private ConnectionContext createConnectionContext() {

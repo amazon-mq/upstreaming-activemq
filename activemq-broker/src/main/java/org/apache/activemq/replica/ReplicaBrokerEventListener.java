@@ -68,6 +68,7 @@ public class ReplicaBrokerEventListener implements MessageListener {
     private final PeriodAcknowledge acknowledgeCallback;
     final ReplicaSequenceStorage sequenceStorage;
     BigInteger sequence;
+    MessageId sequenceMessageId;
 
     private final int NUMBER_OF_MESSAGES_TO_LOG = 1000;
     private int messagesProcessed = 0;
@@ -144,10 +145,12 @@ public class ReplicaBrokerEventListener implements MessageListener {
         BigInteger newSequence = new BigInteger(message.getStringProperty(ReplicaSupport.SEQUENCE_PROPERTY));
 
         long sequenceDifference = sequence == null ? 0 : newSequence.subtract(sequence).longValue();
+        MessageId messageId = message.getMessageId();
         if (sequence == null || sequenceDifference == 1) {
             processMessage(message, eventType, deserializedData, transactionId);
 
             sequence = newSequence;
+            sequenceMessageId = messageId;
 
             messagesProcessed++;
             if (messagesProcessed == NUMBER_OF_MESSAGES_TO_LOG) {
@@ -160,6 +163,10 @@ public class ReplicaBrokerEventListener implements MessageListener {
                     sequence, newSequence));
         } else if (sequenceDifference < 0) {
             logger.info("Replication message duplicate.");
+        } else if (!sequenceMessageId.equals(messageId)) {
+            throw new IllegalStateException(String.format(
+                    "Replication event is out of order. Current sequence %s belongs to message with id %s," +
+                    "but the id of the event is %s", sequence, sequenceMessageId, messageId));
         }
     }
 

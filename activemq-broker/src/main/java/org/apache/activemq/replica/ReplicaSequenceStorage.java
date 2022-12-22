@@ -91,26 +91,6 @@ public class ReplicaSequenceStorage {
         return allMessages.get(0).getText();
     }
 
-    public void enqueue(String message) throws Exception {
-        TransactionId tid = new LocalTransactionId(
-                new ConnectionId(ReplicaSupport.REPLICATION_PLUGIN_CONNECTION_ID),
-                ReplicaSupport.LOCAL_TRANSACTION_ID_GENERATOR.getNextSequenceId());
-        try {
-            broker.beginTransaction(connectionContext, tid);
-
-            enqueue(tid, message);
-
-            broker.commitTransaction(connectionContext, tid, true);
-        } catch (Exception e) {
-            try {
-                broker.rollbackTransaction(connectionContext, tid);
-            } catch (Exception ex) {
-                logger.error("Filed to rollback transaction ", e);
-            }
-            throw e;
-        }
-    }
-
     public void enqueue(TransactionId tid, String message) throws Exception {
         // before enqueue message, we acknowledge all messages currently in queue.
         acknowledgeAll(tid);
