@@ -44,7 +44,6 @@ import javax.jms.Message;
 import javax.jms.MessageListener;
 import java.io.IOException;
 import java.math.BigInteger;
-import java.time.Instant;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
@@ -69,9 +68,6 @@ public class ReplicaBrokerEventListener implements MessageListener {
     final ReplicaSequenceStorage sequenceStorage;
     BigInteger sequence;
     MessageId sequenceMessageId;
-
-    private final int NUMBER_OF_MESSAGES_TO_LOG = 1000;
-    private int messagesProcessed = 0;
 
     ReplicaBrokerEventListener(Broker broker, ReplicaReplicationQueueSupplier queueProvider, PeriodAcknowledge acknowledgeCallback) {
         this.broker = requireNonNull(broker);
@@ -152,11 +148,6 @@ public class ReplicaBrokerEventListener implements MessageListener {
             sequence = newSequence;
             sequenceMessageId = messageId;
 
-            messagesProcessed++;
-            if (messagesProcessed == NUMBER_OF_MESSAGES_TO_LOG) {
-                logger.info("PROF {} {}", Instant.now().getEpochSecond(), NUMBER_OF_MESSAGES_TO_LOG);
-                messagesProcessed = 0;
-            }
         } else if (sequenceDifference > 0) {
             throw new IllegalStateException(String.format(
                     "Replication event is out of order. Current sequence: %s, the sequence of the event: %s",
@@ -166,13 +157,21 @@ public class ReplicaBrokerEventListener implements MessageListener {
         } else if (!sequenceMessageId.equals(messageId)) {
             throw new IllegalStateException(String.format(
                     "Replication event is out of order. Current sequence %s belongs to message with id %s," +
-                    "but the id of the event is %s", sequence, sequenceMessageId, messageId));
+                            "but the id of the event is %s", sequence, sequenceMessageId, messageId));
         }
     }
 
     private void processMessage(ActiveMQMessage message, ReplicaEventType eventType, Object deserializedData,
             TransactionId transactionId) throws Exception {
         switch (eventType) {
+            case DESTINATION_UPSERT:
+                logger.trace("Processing replicated destination");
+                upsertDestination((ActiveMQDestination) deserializedData);
+                return;
+            case DESTINATION_DELETE:
+                logger.trace("Processing replicated destination deletion");
+                deleteDestination((ActiveMQDestination) deserializedData);
+                return;
             case MESSAGE_SEND:
                 logger.trace("Processing replicated message send");
                 persistMessage((ActiveMQMessage) deserializedData, transactionId);
@@ -190,14 +189,6 @@ public class ReplicaBrokerEventListener implements MessageListener {
             case QUEUE_PURGED:
                 logger.trace("Processing queue purge");
                 purgeQueue((ActiveMQDestination) deserializedData);
-                return;
-            case DESTINATION_UPSERT:
-                logger.trace("Processing replicated destination");
-                upsertDestination((ActiveMQDestination) deserializedData);
-                return;
-            case DESTINATION_DELETE:
-                logger.trace("Processing replicated destination deletion");
-                deleteDestination((ActiveMQDestination) deserializedData);
                 return;
             case TRANSACTION_BEGIN:
                 logger.trace("Processing replicated transaction begin");
@@ -254,95 +245,6 @@ public class ReplicaBrokerEventListener implements MessageListener {
         }
     }
 
-    private ReplicaEventType getEventType(ActiveMQMessage message) throws JMSException {
-        return ReplicaEventType.valueOf(message.getStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY));
-    }
-
-    private void persistMessage(ActiveMQMessage message, TransactionId transactionId) throws Exception {
-        try {
-            if (message.getTransactionId() == null || !message.getTransactionId().isXATransaction()) {
-                message.setTransactionId(transactionId);
-            }
-            removeScheduledMessageProperties(message);
-            replicaInternalMessageProducer.sendIgnoringFlowControl(message);
-        } catch (Exception e) {
-            logger.error("Failed to process message {} with JMS message id: {}", message.getMessageId(), message.getJMSMessageID(), e);
-            throw e;
-        }
-    }
-
-    private void removeScheduledMessageProperties(ActiveMQMessage message) throws IOException {
-        message.removeProperty(ScheduledMessage.AMQ_SCHEDULED_PERIOD);
-        message.removeProperty(ScheduledMessage.AMQ_SCHEDULED_REPEAT);
-        message.removeProperty(ScheduledMessage.AMQ_SCHEDULED_CRON);
-        message.removeProperty(ScheduledMessage.AMQ_SCHEDULED_DELAY);
-    }
-
-    private void messageAck(MessageAck ack, List<String> messageIdsToAck, TransactionId transactionId) throws Exception {
-        ActiveMQDestination destination = ack.getDestination();
-        MessageAck messageAck = new MessageAck();
-        try {
-
-            ConsumerInfo consumerInfo = null;
-            if (destination.isQueue()) {
-                consumerInfo = new ConsumerInfo();
-                consumerInfo.setConsumerId(ack.getConsumerId());
-                consumerInfo.setPrefetchSize(0);
-                consumerInfo.setDestination(destination);
-                broker.addConsumer(connectionContext, consumerInfo);
-            }
-
-            for (String messageId : messageIdsToAck) {
-                messageDispatch(ack.getConsumerId(), destination, messageId);
-            }
-
-            ack.copy(messageAck);
-
-            messageAck.setMessageCount(messageIdsToAck.size());
-            messageAck.setFirstMessageId(new MessageId(messageIdsToAck.get(0)));
-            messageAck.setLastMessageId(new MessageId(messageIdsToAck.get(messageIdsToAck.size() - 1)));
-
-            if (messageAck.getTransactionId() == null || !messageAck.getTransactionId().isXATransaction()) {
-                messageAck.setTransactionId(transactionId);
-            }
-
-            ConsumerBrokerExchange consumerBrokerExchange = new ConsumerBrokerExchange();
-            consumerBrokerExchange.setConnectionContext(connectionContext);
-            broker.acknowledge(consumerBrokerExchange, messageAck);
-
-            if (consumerInfo != null) {
-                broker.removeConsumer(connectionContext, consumerInfo);
-            }
-        } catch (Exception e) {
-            logger.error("Unable to ack messages [{} <-> {}] for consumer {}",
-                    ack.getFirstMessageId(),
-                    ack.getLastMessageId(),
-                    ack.getConsumerId(), e);
-            throw e;
-        }
-    }
-
-    private void messageDispatch(ConsumerId consumerId, ActiveMQDestination destination, String messageId) throws Exception {
-        MessageDispatchNotification mdn = new MessageDispatchNotification();
-        mdn.setConsumerId(consumerId);
-        mdn.setDestination(destination);
-        mdn.setMessageId(new MessageId(messageId));
-        broker.processDispatchNotification(mdn);
-    }
-
-    private void purgeQueue(ActiveMQDestination destination) throws Exception {
-        try {
-            Optional<Queue> queue = broker.getDestinations(destination).stream()
-                    .findFirst().map(DestinationExtractor::extractQueue);
-            if (queue.isPresent()) {
-               queue.get().purge(connectionContext);
-            }
-        } catch (Exception e) {
-            logger.error("Unable to replicate queue purge {}", destination, e);
-            throw e;
-        }
-    }
-
     private void upsertDestination(ActiveMQDestination destination) throws Exception {
         try {
             boolean isExistingDestination = Arrays.stream(broker.getDestinations())
@@ -379,6 +281,51 @@ public class ReplicaBrokerEventListener implements MessageListener {
             broker.removeDestination(connectionContext, destination, 1000);
         } catch (Exception e) {
             logger.error("Unable to remove destination [{}]", destination, e);
+            throw e;
+        }
+    }
+
+    private ReplicaEventType getEventType(ActiveMQMessage message) throws JMSException {
+        return ReplicaEventType.valueOf(message.getStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY));
+    }
+
+    private void persistMessage(ActiveMQMessage message, TransactionId transactionId) throws Exception {
+        try {
+            if (message.getTransactionId() == null || !message.getTransactionId().isXATransaction()) {
+                message.setTransactionId(transactionId);
+            }
+            removeScheduledMessageProperties(message);
+            replicaInternalMessageProducer.sendIgnoringFlowControl(message);
+        } catch (Exception e) {
+            logger.error("Failed to process message {} with JMS message id: {}", message.getMessageId(), message.getJMSMessageID(), e);
+            throw e;
+        }
+    }
+
+    private void messageDispatch(ConsumerId consumerId, ActiveMQDestination destination, String messageId) throws Exception {
+        MessageDispatchNotification mdn = new MessageDispatchNotification();
+        mdn.setConsumerId(consumerId);
+        mdn.setDestination(destination);
+        mdn.setMessageId(new MessageId(messageId));
+        broker.processDispatchNotification(mdn);
+    }
+
+    private void removeScheduledMessageProperties(ActiveMQMessage message) throws IOException {
+        message.removeProperty(ScheduledMessage.AMQ_SCHEDULED_PERIOD);
+        message.removeProperty(ScheduledMessage.AMQ_SCHEDULED_REPEAT);
+        message.removeProperty(ScheduledMessage.AMQ_SCHEDULED_CRON);
+        message.removeProperty(ScheduledMessage.AMQ_SCHEDULED_DELAY);
+    }
+
+    private void purgeQueue(ActiveMQDestination destination) throws Exception {
+        try {
+            Optional<Queue> queue = broker.getDestinations(destination).stream()
+                    .findFirst().map(DestinationExtractor::extractQueue);
+            if (queue.isPresent()) {
+                queue.get().purge(connectionContext);
+            }
+        } catch (Exception e) {
+            logger.error("Unable to replicate queue purge {}", destination, e);
             throw e;
         }
     }
@@ -466,6 +413,50 @@ public class ReplicaBrokerEventListener implements MessageListener {
             broker.removeConsumer(context, consumerInfo);
         } catch (Exception e) {
             logger.error("Unable to replicate remove durable consumer [{}]", consumerInfo, e);
+            throw e;
+        }
+    }
+
+    private void messageAck(MessageAck ack, List<String> messageIdsToAck, TransactionId transactionId) throws Exception {
+        ActiveMQDestination destination = ack.getDestination();
+        MessageAck messageAck = new MessageAck();
+        try {
+
+            ConsumerInfo consumerInfo = null;
+            if (destination.isQueue()) {
+                consumerInfo = new ConsumerInfo();
+                consumerInfo.setConsumerId(ack.getConsumerId());
+                consumerInfo.setPrefetchSize(0);
+                consumerInfo.setDestination(destination);
+                broker.addConsumer(connectionContext, consumerInfo);
+            }
+
+            for (String messageId : messageIdsToAck) {
+                messageDispatch(ack.getConsumerId(), destination, messageId);
+            }
+
+            ack.copy(messageAck);
+
+            messageAck.setMessageCount(messageIdsToAck.size());
+            messageAck.setFirstMessageId(new MessageId(messageIdsToAck.get(0)));
+            messageAck.setLastMessageId(new MessageId(messageIdsToAck.get(messageIdsToAck.size() - 1)));
+
+            if (messageAck.getTransactionId() == null || !messageAck.getTransactionId().isXATransaction()) {
+                messageAck.setTransactionId(transactionId);
+            }
+
+            ConsumerBrokerExchange consumerBrokerExchange = new ConsumerBrokerExchange();
+            consumerBrokerExchange.setConnectionContext(connectionContext);
+            broker.acknowledge(consumerBrokerExchange, messageAck);
+
+            if (consumerInfo != null) {
+                broker.removeConsumer(connectionContext, consumerInfo);
+            }
+        } catch (Exception e) {
+            logger.error("Unable to ack messages [{} <-> {}] for consumer {}",
+                    ack.getFirstMessageId(),
+                    ack.getLastMessageId(),
+                    ack.getConsumerId(), e);
             throw e;
         }
     }

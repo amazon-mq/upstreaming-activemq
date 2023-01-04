@@ -23,8 +23,6 @@ import org.apache.activemq.broker.region.Destination;
 import org.apache.activemq.broker.region.DurableTopicSubscription;
 import org.apache.activemq.broker.region.PrefetchSubscription;
 import org.apache.activemq.broker.region.Queue;
-import org.apache.activemq.broker.region.Region;
-import org.apache.activemq.broker.region.RegionBroker;
 import org.apache.activemq.broker.region.Topic;
 import org.apache.activemq.command.ActiveMQDestination;
 import org.apache.activemq.command.ActiveMQMessage;
@@ -63,8 +61,6 @@ import static org.mockito.Mockito.when;
 public class ReplicaBrokerEventListenerTest {
 
     private final Broker broker = mock(Broker.class);
-    private final RegionBroker regionBroker = mock(RegionBroker.class);
-    private final Region region = mock(Region.class);
     private final ActiveMQQueue sequenceQueue = new ActiveMQQueue(ReplicaSupport.SEQUENCE_REPLICATION_QUEUE_NAME);
     private final ActiveMQQueue testQueue = new ActiveMQQueue("TEST.QUEUE");
     private final ActiveMQTopic testTopic = new ActiveMQTopic("TEST.TOPIC");
@@ -86,8 +82,6 @@ public class ReplicaBrokerEventListenerTest {
         when(broker.getDestinations(testQueue)).thenReturn(Set.of(destinationQueue));
         when(broker.getDestinations(testTopic)).thenReturn(Set.of(destinationTopic));
         when(connectionContext.isProducerFlowControl()).thenReturn(true);
-        when(broker.getAdaptor(RegionBroker.class)).thenReturn(regionBroker);
-        when(regionBroker.getRegion(testQueue)).thenReturn(region);
         when(connectionContext.copy()).thenReturn(new ConnectionContext());
         when(connectionContext.getUserName()).thenReturn(ReplicaSupport.REPLICATION_PLUGIN_USER_NAME);
         BrokerService brokerService = mock(BrokerService.class);
@@ -110,8 +104,8 @@ public class ReplicaBrokerEventListenerTest {
 
         ActiveMQMessage replicaEventMessage = spy(new ActiveMQMessage());
         ReplicaEvent event = new ReplicaEvent()
-            .setEventType(ReplicaEventType.DESTINATION_UPSERT)
-            .setEventData(eventSerializer.serializeReplicationData(testQueue));
+                .setEventType(ReplicaEventType.DESTINATION_UPSERT)
+                .setEventData(eventSerializer.serializeReplicationData(testQueue));
         replicaEventMessage.setContent(event.getEventData());
         replicaEventMessage.setStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY, event.getEventType().name());
         replicaEventMessage.setStringProperty(ReplicaSupport.SEQUENCE_PROPERTY, "0");
@@ -129,8 +123,8 @@ public class ReplicaBrokerEventListenerTest {
 
         ActiveMQMessage replicaEventMessage = spy(new ActiveMQMessage());
         ReplicaEvent event = new ReplicaEvent()
-            .setEventType(ReplicaEventType.DESTINATION_UPSERT)
-            .setEventData(eventSerializer.serializeReplicationData(testQueue));
+                .setEventType(ReplicaEventType.DESTINATION_UPSERT)
+                .setEventData(eventSerializer.serializeReplicationData(testQueue));
         replicaEventMessage.setContent(event.getEventData());
         replicaEventMessage.setStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY, event.getEventType().name());
         replicaEventMessage.setStringProperty(ReplicaSupport.SEQUENCE_PROPERTY, "0");
@@ -148,8 +142,8 @@ public class ReplicaBrokerEventListenerTest {
 
         ActiveMQMessage replicaEventMessage = spy(new ActiveMQMessage());
         ReplicaEvent event = new ReplicaEvent()
-            .setEventType(ReplicaEventType.DESTINATION_DELETE)
-            .setEventData(eventSerializer.serializeReplicationData(testQueue));
+                .setEventType(ReplicaEventType.DESTINATION_DELETE)
+                .setEventData(eventSerializer.serializeReplicationData(testQueue));
         replicaEventMessage.setContent(event.getEventData());
         replicaEventMessage.setStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY, event.getEventType().name());
         replicaEventMessage.setStringProperty(ReplicaSupport.SEQUENCE_PROPERTY, "0");
@@ -167,8 +161,8 @@ public class ReplicaBrokerEventListenerTest {
 
         ActiveMQMessage replicaEventMessage = spy(new ActiveMQMessage());
         ReplicaEvent event = new ReplicaEvent()
-            .setEventType(ReplicaEventType.DESTINATION_DELETE)
-            .setEventData(eventSerializer.serializeReplicationData(testQueue));
+                .setEventType(ReplicaEventType.DESTINATION_DELETE)
+                .setEventData(eventSerializer.serializeReplicationData(testQueue));
         replicaEventMessage.setContent(event.getEventData());
         replicaEventMessage.setStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY, event.getEventType().name());
         replicaEventMessage.setStringProperty(ReplicaSupport.SEQUENCE_PROPERTY, "0");
@@ -208,50 +202,6 @@ public class ReplicaBrokerEventListenerTest {
         verify(connectionContext, times(2)).isProducerFlowControl();
         verify(connectionContext, times(2)).setProducerFlowControl(false);
         verify(connectionContext, times(2)).setProducerFlowControl(true);
-    }
-
-    @Test
-    public void canHandleEventOfType_MESSAGE_ACK_forTopic() throws Exception {
-        listener.sequence = null;
-        MessageId messageId = new MessageId("1:1:1:1");
-
-        MessageAck ack = new MessageAck();
-        ConsumerId consumerId = new ConsumerId("2:2:2:2");
-        ack.setConsumerId(consumerId);
-        ack.setDestination(testTopic);
-
-        ReplicaEvent event = new ReplicaEvent()
-                .setEventType(ReplicaEventType.MESSAGE_ACK)
-                .setEventData(eventSerializer.serializeReplicationData(ack))
-                .setReplicationProperty(ReplicaSupport.MESSAGE_IDS_PROPERTY, Collections.singletonList(messageId.toString()));
-        ActiveMQMessage replicaEventMessage = spy(new ActiveMQMessage());
-        replicaEventMessage.setType("ReplicaEvent");
-        replicaEventMessage.setStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY, event.getEventType().name());
-        replicaEventMessage.setStringProperty(ReplicaSupport.SEQUENCE_PROPERTY, "0");
-        replicaEventMessage.setContent(event.getEventData());
-        replicaEventMessage.setProperties(event.getReplicationProperties());
-
-        listener.onMessage(replicaEventMessage);
-
-        ArgumentCaptor<ConsumerInfo> ciArgumentCaptor = ArgumentCaptor.forClass(ConsumerInfo.class);
-        verify(broker).addConsumer(any(), ciArgumentCaptor.capture());
-        ConsumerInfo consumerInfo = ciArgumentCaptor.getValue();
-        assertThat(consumerInfo.getDestination()).isEqualTo(sequenceQueue);
-
-        ArgumentCaptor<MessageDispatchNotification> mdnArgumentCaptor = ArgumentCaptor.forClass(MessageDispatchNotification.class);
-        verify(broker).processDispatchNotification(mdnArgumentCaptor.capture());
-
-        MessageDispatchNotification mdn = mdnArgumentCaptor.getValue();
-        assertThat(mdn.getMessageId()).isEqualTo(messageId);
-        assertThat(mdn.getDestination()).isEqualTo(testTopic);
-        assertThat(mdn.getConsumerId()).isEqualTo(consumerId);
-
-        ArgumentCaptor<MessageAck> ackArgumentCaptor = ArgumentCaptor.forClass(MessageAck.class);
-        verify(broker).acknowledge(any(), ackArgumentCaptor.capture());
-
-        MessageAck value = ackArgumentCaptor.getValue();
-        assertThat(value.getDestination()).isEqualTo(ack.getDestination());
-        assertThat(value.getConsumerId()).isEqualTo(ack.getConsumerId());
     }
 
     @Test
@@ -366,6 +316,28 @@ public class ReplicaBrokerEventListenerTest {
     }
 
     @Test
+    public void canHandleEventOfType_TRANSACTION_FORGET() throws Exception {
+        listener.sequence = null;
+        MessageId messageId = new MessageId("1:1");
+        TransactionId transactionId = new LocalTransactionId(new ConnectionId("10101010"), 101010);
+        ActiveMQMessage message = spy(new ActiveMQMessage());
+        message.setMessageId(messageId);
+        ReplicaEvent event = new ReplicaEvent()
+                .setEventType(ReplicaEventType.TRANSACTION_FORGET)
+                .setEventData(eventSerializer.serializeReplicationData(transactionId));
+        message.setContent(event.getEventData());
+        message.setStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY, event.getEventType().name());
+        message.setStringProperty(ReplicaSupport.SEQUENCE_PROPERTY, "0");
+
+        listener.onMessage(message);
+
+        ArgumentCaptor<TransactionId> messageArgumentCaptor = ArgumentCaptor.forClass(TransactionId.class);
+        verify(broker).forgetTransaction(any(), messageArgumentCaptor.capture());
+        TransactionId value = messageArgumentCaptor.getValue();
+        assertThat(value).isEqualTo(transactionId);
+    }
+
+    @Test
     public void canHandleEventOfType_TRANSACTION_ROLLBACK() throws Exception {
         listener.sequence = null;
         MessageId messageId = new MessageId("1:1");
@@ -414,28 +386,6 @@ public class ReplicaBrokerEventListenerTest {
         List<Boolean> onePhaseValues = onePhaseArgumentCaptor.getAllValues();
         assertThat(onePhaseValues.get(0)).isTrue();
         assertThat(onePhaseValues.get(1)).isTrue();
-    }
-
-    @Test
-    public void canHandleEventOfType_TRANSACTION_FORGET() throws Exception {
-        listener.sequence = null;
-        MessageId messageId = new MessageId("1:1");
-        TransactionId transactionId = new LocalTransactionId(new ConnectionId("10101010"), 101010);
-        ActiveMQMessage message = spy(new ActiveMQMessage());
-        message.setMessageId(messageId);
-        ReplicaEvent event = new ReplicaEvent()
-                .setEventType(ReplicaEventType.TRANSACTION_FORGET)
-                .setEventData(eventSerializer.serializeReplicationData(transactionId));
-        message.setContent(event.getEventData());
-        message.setStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY, event.getEventType().name());
-        message.setStringProperty(ReplicaSupport.SEQUENCE_PROPERTY, "0");
-
-        listener.onMessage(message);
-
-        ArgumentCaptor<TransactionId> messageArgumentCaptor = ArgumentCaptor.forClass(TransactionId.class);
-        verify(broker).forgetTransaction(any(), messageArgumentCaptor.capture());
-        TransactionId value = messageArgumentCaptor.getValue();
-        assertThat(value).isEqualTo(transactionId);
     }
 
     @Test
@@ -501,6 +451,50 @@ public class ReplicaBrokerEventListenerTest {
         verify(broker).removeConsumer(any(), messageArgumentCaptor.capture());
         ConsumerInfo value = messageArgumentCaptor.getValue();
         assertThat(value.getDestination()).isEqualTo(testQueue);
+    }
+
+    @Test
+    public void canHandleEventOfType_MESSAGE_ACK_forTopic() throws Exception {
+        listener.sequence = null;
+        MessageId messageId = new MessageId("1:1:1:1");
+
+        MessageAck ack = new MessageAck();
+        ConsumerId consumerId = new ConsumerId("2:2:2:2");
+        ack.setConsumerId(consumerId);
+        ack.setDestination(testTopic);
+
+        ReplicaEvent event = new ReplicaEvent()
+                .setEventType(ReplicaEventType.MESSAGE_ACK)
+                .setEventData(eventSerializer.serializeReplicationData(ack))
+                .setReplicationProperty(ReplicaSupport.MESSAGE_IDS_PROPERTY, Collections.singletonList(messageId.toString()));
+        ActiveMQMessage replicaEventMessage = spy(new ActiveMQMessage());
+        replicaEventMessage.setType("ReplicaEvent");
+        replicaEventMessage.setStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY, event.getEventType().name());
+        replicaEventMessage.setStringProperty(ReplicaSupport.SEQUENCE_PROPERTY, "0");
+        replicaEventMessage.setContent(event.getEventData());
+        replicaEventMessage.setProperties(event.getReplicationProperties());
+
+        listener.onMessage(replicaEventMessage);
+
+        ArgumentCaptor<ConsumerInfo> ciArgumentCaptor = ArgumentCaptor.forClass(ConsumerInfo.class);
+        verify(broker).addConsumer(any(), ciArgumentCaptor.capture());
+        ConsumerInfo consumerInfo = ciArgumentCaptor.getValue();
+        assertThat(consumerInfo.getDestination()).isEqualTo(sequenceQueue);
+
+        ArgumentCaptor<MessageDispatchNotification> mdnArgumentCaptor = ArgumentCaptor.forClass(MessageDispatchNotification.class);
+        verify(broker).processDispatchNotification(mdnArgumentCaptor.capture());
+
+        MessageDispatchNotification mdn = mdnArgumentCaptor.getValue();
+        assertThat(mdn.getMessageId()).isEqualTo(messageId);
+        assertThat(mdn.getDestination()).isEqualTo(testTopic);
+        assertThat(mdn.getConsumerId()).isEqualTo(consumerId);
+
+        ArgumentCaptor<MessageAck> ackArgumentCaptor = ArgumentCaptor.forClass(MessageAck.class);
+        verify(broker).acknowledge(any(), ackArgumentCaptor.capture());
+
+        MessageAck value = ackArgumentCaptor.getValue();
+        assertThat(value.getDestination()).isEqualTo(ack.getDestination());
+        assertThat(value.getConsumerId()).isEqualTo(ack.getConsumerId());
     }
 
     @Test

@@ -166,14 +166,14 @@ public class ReplicaBroker extends BrokerFilter {
             return;
         }
         ActiveMQQueue replicationSourceQueue = connection.get()
-            .getDestinationSource()
-            .getQueues()
-            .stream()
-            .filter(d -> ReplicaSupport.MAIN_REPLICATION_QUEUE_NAME.equals(d.getPhysicalName()))
-            .findFirst()
-            .orElseThrow(() -> new IllegalStateException(
-                MessageFormat.format("There is no replication queue on the source broker {0}", replicaSourceConnectionFactory.getBrokerURL())
-            ));
+                .getDestinationSource()
+                .getQueues()
+                .stream()
+                .filter(d -> ReplicaSupport.MAIN_REPLICATION_QUEUE_NAME.equals(d.getPhysicalName()))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException(
+                        MessageFormat.format("There is no replication queue on the source broker {0}", replicaSourceConnectionFactory.getBrokerURL())
+                ));
         logger.info("Plugin will mirror events from queue {}", replicationSourceQueue.getPhysicalName());
         ReplicaBrokerEventListener messageListener = new ReplicaBrokerEventListener(getNext(), queueProvider, periodAcknowledgeCallBack);
         messageListener.initialize();
@@ -181,7 +181,7 @@ public class ReplicaBroker extends BrokerFilter {
         Method getNextConsumerId = ActiveMQSession.class.getDeclaredMethod("getNextConsumerId");
         getNextConsumerId.setAccessible(true);
         eventConsumer.set(new ActiveMQMessageConsumer(connectionSession.get(), (ConsumerId) getNextConsumerId.invoke(connectionSession.get()), replicationSourceQueue, null, null, prefetchPolicy.getQueuePrefetch(),
-            prefetchPolicy.getMaximumPendingMessageLimit(), false, false, connectionSession.get().isAsyncDispatch(), messageListener) {
+                prefetchPolicy.getMaximumPendingMessageLimit(), false, false, connectionSession.get().isAsyncDispatch(), messageListener) {
             @Override
             public void dispatch(MessageDispatch md) {
                 synchronized (periodAcknowledgeCallBack) {

@@ -461,6 +461,26 @@ public class ReplicaSourceBroker extends ReplicaSourceBaseBroker {
         }
     }
 
+    private boolean needToReplicateAck(ConnectionContext connectionContext, MessageAck ack, PrefetchSubscription subscription) {
+        if (isReplicaContext(connectionContext)) {
+            return false;
+        }
+        if (ReplicaSupport.isReplicationQueue(ack.getDestination())) {
+            return false;
+        }
+        if (ack.getDestination().isTemporary()) {
+            return false;
+        }
+        if (!ack.isStandardAck() && !ack.isIndividualAck()) {
+            return false;
+        }
+        if (subscription instanceof QueueBrowserSubscription && !connectionContext.isNetworkConnection()) {
+            return false;
+        }
+
+        return true;
+    }
+
     @Override
     public Destination addDestination(ConnectionContext context, ActiveMQDestination destination, boolean createIfTemporary)
             throws Exception {
@@ -588,26 +608,6 @@ public class ReplicaSourceBroker extends ReplicaSourceBaseBroker {
                     ack.getLastMessageId(),
                     ack.getConsumerId(), e);
         }
-    }
-
-    private boolean needToReplicateAck(ConnectionContext connectionContext, MessageAck ack, PrefetchSubscription subscription) {
-        if (isReplicaContext(connectionContext)) {
-            return false;
-        }
-        if (ReplicaSupport.isReplicationQueue(ack.getDestination())) {
-            return false;
-        }
-        if (ack.getDestination().isTemporary()) {
-            return false;
-        }
-        if (!ack.isStandardAck() && !ack.isIndividualAck()) {
-            return false;
-        }
-        if (subscription instanceof QueueBrowserSubscription && !connectionContext.isNetworkConnection()) {
-            return false;
-        }
-
-        return true;
     }
 
     @Override
