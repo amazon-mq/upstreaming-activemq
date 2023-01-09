@@ -1567,10 +1567,6 @@ public abstract class DemandForwardingBridgeSupport implements NetworkBridge, Br
     }
 
     protected DemandSubscription doCreateDemandSubscription(ConsumerInfo info) throws IOException {
-        if (ReplicaSupport.isReplicationQueue(info.getDestination())) {
-            return null;
-        }
-
         DemandSubscription result = new DemandSubscription(info);
         result.getLocalInfo().setConsumerId(new ConsumerId(localSessionInfo.getSessionId(), consumerIdGenerator.getNextSequenceId()));
         if (info.getDestination().isTemporary()) {
