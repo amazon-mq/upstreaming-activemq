@@ -65,7 +65,6 @@ public class ReplicaSequencer {
 
     private static final String SOURCE_CONSUMER_CLIENT_ID = "DUMMY_SOURCE_CONSUMER";
     private static final String SEQUENCE_NAME = "primarySeq";
-    public static final int ITERATE_SEND_PERIOD = 5_000;
 
     private final Broker broker;
     private final ReplicaReplicationQueueSupplier queueProvider;
@@ -81,6 +80,9 @@ public class ReplicaSequencer {
     final Set<String> deliveredMessages = new HashSet<>();
     final LinkedList<String> messageToAck = new LinkedList<>();
     private final ReplicaAckHelper replicaAckHelper;
+    private final ReplicaPolicy replicaPolicy;
+    private final ReplicaBatcher replicaBatcher;
+
     ReplicaCompactor replicaCompactor;
     private final LongSequenceGenerator sessionIdGenerator = new LongSequenceGenerator();
     private final LongSequenceGenerator customerIdGenerator = new LongSequenceGenerator();
@@ -106,12 +108,14 @@ public class ReplicaSequencer {
 
     public ReplicaSequencer(Broker broker, ReplicaReplicationQueueSupplier queueProvider,
             ReplicaInternalMessageProducer replicaInternalMessageProducer,
-            ReplicationMessageProducer replicationMessageProducer) {
+            ReplicationMessageProducer replicationMessageProducer, ReplicaPolicy replicaPolicy) {
         this.broker = broker;
         this.queueProvider = queueProvider;
         this.replicaInternalMessageProducer = replicaInternalMessageProducer;
         this.replicationMessageProducer = replicationMessageProducer;
         this.replicaAckHelper = new ReplicaAckHelper(broker);
+        this.replicaPolicy = replicaPolicy;
+        this.replicaBatcher = new ReplicaBatcher(replicaPolicy);
         if (broker.getBrokerService().isUseJmx()) {
             replicationView = new ReplicationView();
             Executors.newSingleThreadScheduledExecutor().scheduleAtFixedRate(() -> {
@@ -121,7 +125,7 @@ public class ReplicaSequencer {
             }, 10, 10, TimeUnit.SECONDS);
         }
         Executors.newSingleThreadScheduledExecutor().scheduleAtFixedRate(this::asyncSendWakeup,
-                ITERATE_SEND_PERIOD, ITERATE_SEND_PERIOD, TimeUnit.MILLISECONDS);
+                replicaPolicy.getSourceSendPeriod(), replicaPolicy.getSourceSendPeriod(), TimeUnit.MILLISECONDS);
     }
 
     void initialize() throws Exception {
@@ -148,7 +152,8 @@ public class ReplicaSequencer {
         consumerInfo.setDestination(queueProvider.getIntermediateQueue());
         subscription = (PrefetchSubscription) broker.addConsumer(connectionContext, consumerInfo);
 
-        replicaCompactor = new ReplicaCompactor(broker, connectionContext, queueProvider, subscription, tpsCounter);
+        replicaCompactor = new ReplicaCompactor(broker, connectionContext, queueProvider, subscription,
+                replicaPolicy.getCompactorAdditionalMessagesLimit(), tpsCounter);
 
         String savedSequence = sequenceStorage.initialize();
         restoreSequence(savedSequence, intermediateQueue);
@@ -233,14 +238,14 @@ public class ReplicaSequencer {
     void asyncSendWakeup() {
         try {
             long l = pendingSendWakeups.incrementAndGet();
-            if (l % ReplicaBatcher.MAX_BATCH_LENGTH == 0) {
+            if (l % replicaPolicy.getMaxBatchLength() == 0) {
                 pendingSendTriggeredWakeups.incrementAndGet();
                 sendTaskRunner.wakeup();
-                pendingSendWakeups.addAndGet(-ReplicaBatcher.MAX_BATCH_LENGTH);
+                pendingSendWakeups.addAndGet(-replicaPolicy.getMaxBatchLength());
                 return;
             }
 
-            if (System.currentTimeMillis() - lastProcessTime.get() > ITERATE_SEND_PERIOD) {
+            if (System.currentTimeMillis() - lastProcessTime.get() > replicaPolicy.getSourceSendPeriod()) {
                 pendingSendTriggeredWakeups.incrementAndGet();
                 sendTaskRunner.wakeup();
             }
@@ -388,7 +393,7 @@ public class ReplicaSequencer {
 
         List<List<MessageReference>> batches;
         try {
-            batches = ReplicaBatcher.batches(toProcess);
+            batches = replicaBatcher.batches(toProcess);
         } catch (Exception e) {
             logger.error("Filed to batch messages in the intermediate replication queue", e);
             return;
