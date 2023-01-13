@@ -20,7 +20,6 @@ import org.apache.activemq.broker.Broker;
 import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.broker.ConnectionContext;
 import org.apache.activemq.broker.ConsumerBrokerExchange;
-import org.apache.activemq.broker.jmx.AnnotatedMBean;
 import org.apache.activemq.broker.region.MessageReference;
 import org.apache.activemq.broker.region.PrefetchSubscription;
 import org.apache.activemq.broker.region.Queue;
@@ -44,8 +43,6 @@ import org.apache.activemq.util.LongSequenceGenerator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.management.MalformedObjectNameException;
-import javax.management.ObjectName;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -102,13 +99,13 @@ public class ReplicaSequencer {
 
     private final AtomicBoolean initialized = new AtomicBoolean();
 
-    private ReplicationView replicationView;
     private final AtomicLong tpsCounter = new AtomicLong();
     private long lastTpsCounter;
 
     public ReplicaSequencer(Broker broker, ReplicaReplicationQueueSupplier queueProvider,
-            ReplicaInternalMessageProducer replicaInternalMessageProducer,
-            ReplicationMessageProducer replicationMessageProducer, ReplicaPolicy replicaPolicy) {
+                            ReplicaInternalMessageProducer replicaInternalMessageProducer,
+                            ReplicationMessageProducer replicationMessageProducer,
+                            ReplicaPolicy replicaPolicy) {
         this.broker = broker;
         this.queueProvider = queueProvider;
         this.replicaInternalMessageProducer = replicaInternalMessageProducer;
@@ -116,14 +113,6 @@ public class ReplicaSequencer {
         this.replicaAckHelper = new ReplicaAckHelper(broker);
         this.replicaPolicy = replicaPolicy;
         this.replicaBatcher = new ReplicaBatcher(replicaPolicy);
-        if (broker.getBrokerService().isUseJmx()) {
-            replicationView = new ReplicationView();
-            Executors.newSingleThreadScheduledExecutor().scheduleAtFixedRate(() -> {
-                long c = tpsCounter.get();
-                replicationView.setReplicationTps((c - lastTpsCounter) / 10);
-                lastTpsCounter = c;
-            }, 10, 10, TimeUnit.SECONDS);
-        }
         Executors.newSingleThreadScheduledExecutor().scheduleAtFixedRate(this::asyncSendWakeup,
                 replicaPolicy.getSourceSendPeriod(), replicaPolicy.getSourceSendPeriod(), TimeUnit.MILLISECONDS);
     }
@@ -160,19 +149,17 @@ public class ReplicaSequencer {
 
         initialized.compareAndSet(false, true);
         asyncSendWakeup();
-
-        if (brokerService.isUseJmx()) {
-            AnnotatedMBean.registerMBean(brokerService.getManagementContext(), replicationView, createJmxName());
-        }
     }
 
-    private ObjectName createJmxName() throws MalformedObjectNameException {
-        String objectNameStr = broker.getBrokerService().getBrokerObjectName().toString();
-
-        objectNameStr += "," + "service=Plugins";
-        objectNameStr += "," + "instanceName=ReplicationPlugin";
-
-        return new ObjectName(objectNameStr);
+    void initializeJmx(ReplicationView replicationView) {
+        if (replicationView == null) {
+            return;
+        }
+        Executors.newSingleThreadScheduledExecutor().scheduleAtFixedRate(() -> {
+            long c = tpsCounter.get();
+            replicationView.setReplicationTps((c - lastTpsCounter) / 10);
+            lastTpsCounter = c;
+        }, 10, 10, TimeUnit.SECONDS);
     }
 
     void restoreSequence(String savedSequence, Queue intermediateQueue) throws Exception {

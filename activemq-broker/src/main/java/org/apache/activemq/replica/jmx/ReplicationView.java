@@ -16,9 +16,17 @@
  */
 package org.apache.activemq.replica.jmx;
 
+import org.apache.activemq.replica.ReplicaPlugin;
+import org.apache.activemq.replica.ReplicaRole;
+
 public class ReplicationView implements ReplicationViewMBean {
 
+    private final ReplicaPlugin plugin;
     private long replicationTps;
+
+    public ReplicationView(ReplicaPlugin plugin) {
+        this.plugin = plugin;
+    }
 
     @Override
     public long getReplicationTps() {
@@ -27,5 +35,15 @@ public class ReplicationView implements ReplicationViewMBean {
 
     public void setReplicationTps(long replicationTps) {
         this.replicationTps = replicationTps;
+    }
+
+    @Override
+    public void setReplicationRole(String role, boolean force) {
+        plugin.setReplicaRole(ReplicaRole.valueOf(role), force);
+    }
+
+    @Override
+    public String getReplicationRole() {
+        return plugin.getRole().name();
     }
 }
