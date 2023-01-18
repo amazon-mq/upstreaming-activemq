@@ -46,7 +46,7 @@ public class ReplicaPluginInstallationTest {
     }
 
     @Test
-    public void testInstallPluginWithDefaultRole() {
+    public void testInstallPluginWithDefaultRole() throws Exception {
         pluginUnderTest.setTransportConnectorUri("failover:(tcp://localhost:61616)");
         assertTrue(pluginUnderTest.installPlugin(broker) instanceof ReplicaSourceBroker);
         assertEquals(ReplicaRole.source, pluginUnderTest.getRole());
@@ -59,14 +59,14 @@ public class ReplicaPluginInstallationTest {
     }
 
     @Test
-    public void testInstallPluginWithReplicaRole() {
+    public void testInstallPluginWithReplicaRole() throws Exception {
         pluginUnderTest.setRole(ReplicaRole.replica);
         pluginUnderTest.setOtherBrokerUri("failover:(tcp://localhost:61616)");
         assertTrue(pluginUnderTest.installPlugin(broker) instanceof ReplicaBroker);
     }
 
     @Test
-    public void testInstallPluginWithDualRole() {
+    public void testInstallPluginWithDualRole() throws Exception {
         pluginUnderTest.setRole(ReplicaRole.dual);
         pluginUnderTest.setTransportConnectorUri("failover:(tcp://localhost:61616)");
         assertTrue(pluginUnderTest.installPlugin(broker) instanceof ReplicaBroker);
