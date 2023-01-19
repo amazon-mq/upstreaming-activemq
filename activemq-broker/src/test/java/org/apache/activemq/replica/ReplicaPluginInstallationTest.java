@@ -18,6 +18,9 @@ package org.apache.activemq.replica;
 
 import org.apache.activemq.broker.Broker;
 import org.apache.activemq.broker.BrokerService;
+import org.apache.activemq.broker.region.CompositeDestinationInterceptor;
+import org.apache.activemq.broker.region.DestinationInterceptor;
+import org.apache.activemq.broker.region.RegionBroker;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -37,12 +40,18 @@ public class ReplicaPluginInstallationTest {
     public void setUp() {
         when(broker.getBrokerService()).thenReturn(brokerService);
         when(brokerService.isUseJmx()).thenReturn(false);
+
+        RegionBroker regionBroker = mock(RegionBroker.class);
+        when(broker.getAdaptor(RegionBroker.class)).thenReturn(regionBroker);
+        CompositeDestinationInterceptor cdi = mock(CompositeDestinationInterceptor.class);
+        when(regionBroker.getDestinationInterceptor()).thenReturn(cdi);
+        when(cdi.getInterceptors()).thenReturn(new DestinationInterceptor[]{});
     }
 
     @Test
     public void testInstallPluginWithDefaultRole() throws Exception {
         pluginUnderTest.setTransportConnectorUri("failover:(tcp://localhost:61616)");
-        assertTrue(pluginUnderTest.installPlugin(broker) instanceof ReplicaSourceBroker);
+        assertTrue(pluginUnderTest.installPlugin(broker) instanceof ReplicaSourceAuthorizationBroker);
         assertEquals(ReplicaRole.source, pluginUnderTest.getRole());
     }
 
