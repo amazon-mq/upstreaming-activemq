@@ -18,6 +18,7 @@ package org.apache.activemq.replica;
 
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.broker.Broker;
+import org.apache.activemq.broker.BrokerService;
 import org.assertj.core.api.SoftAssertions;
 import org.junit.Test;
 
@@ -27,6 +28,7 @@ import java.util.Arrays;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 public class ReplicaPluginTest {
 
@@ -110,8 +112,8 @@ public class ReplicaPluginTest {
 
     @Test
     public void canSetUserNameAndPassword() {
-        final String userUsername = "testUser";
-        final String password = "testPassword";
+        String userUsername = "testUser";
+        String password = "testPassword";
 
         plugin.setUserName(userUsername);
         plugin.setPassword(password);
@@ -122,9 +124,9 @@ public class ReplicaPluginTest {
 
     @Test(expected = NullPointerException.class)
     public void shouldThrowExceptionIfUserIsSetAndPasswordIsNotForReplica() throws Exception {
-        final String userName = "testUser";
-        final Broker broker = mock(Broker.class);
-        final String replicationTransport = "tcp://localhost:61616";
+        String userName = "testUser";
+        Broker broker = mock(Broker.class);
+        String replicationTransport = "tcp://localhost:61616";
 
         plugin.setRole(ReplicaRole.replica);
         plugin.setUserName(userName);
@@ -136,9 +138,9 @@ public class ReplicaPluginTest {
 
     @Test(expected = NullPointerException.class)
     public void shouldThrowExceptionIfPasswordIsSetAndUserNameIsNotForReplica() throws Exception {
-        final String password = "testPassword";
-        final Broker broker = mock(Broker.class);
-        final String replicationTransport = "tcp://localhost:61616";
+        String password = "testPassword";
+        Broker broker = mock(Broker.class);
+        String replicationTransport = "tcp://localhost:61616";
 
         plugin.setRole(ReplicaRole.replica);
         plugin.setPassword(password);
@@ -150,10 +152,13 @@ public class ReplicaPluginTest {
 
     @Test
     public void shouldNotThrowExceptionIfBothUserAndPasswordIsSetForReplica() throws Exception {
-        final String user = "testUser";
-        final String password = "testPassword";
-        final Broker broker = mock(Broker.class);
-        final String replicationTransport = "tcp://localhost:61616";
+        String user = "testUser";
+        String password = "testPassword";
+        Broker broker = mock(Broker.class);
+        BrokerService brokerService = mock(BrokerService.class);
+        when(broker.getBrokerService()).thenReturn(brokerService);
+        when(brokerService.isUseJmx()).thenReturn(false);
+        String replicationTransport = "tcp://localhost:61616";
 
         plugin.setRole(ReplicaRole.replica);
         plugin.setPassword(password);
