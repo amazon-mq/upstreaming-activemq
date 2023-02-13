@@ -53,6 +53,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -88,6 +89,7 @@ public class ReplicaSequencer {
     private TaskRunner sendTaskRunner;
     private Queue mainQueue;
     private ConnectionContext connectionContext;
+    private ScheduledExecutorService scheduler;
 
     private PrefetchSubscription subscription;
     boolean hasConsumer;
@@ -114,8 +116,7 @@ public class ReplicaSequencer {
         this.replicaAckHelper = new ReplicaAckHelper(broker);
         this.replicaPolicy = replicaPolicy;
         this.replicaBatcher = new ReplicaBatcher(replicaPolicy);
-        Executors.newSingleThreadScheduledExecutor().scheduleAtFixedRate(this::asyncSendWakeup,
-                replicaPolicy.getSourceSendPeriod(), replicaPolicy.getSourceSendPeriod(), TimeUnit.MILLISECONDS);
+        scheduleExecutor();
     }
 
     void initialize() throws Exception {
@@ -188,6 +189,16 @@ public class ReplicaSequencer {
 
         initialized.compareAndSet(true, false);
 
+    }
+
+    void scheduleExecutor() {
+        scheduler = Executors.newSingleThreadScheduledExecutor();
+        scheduler.scheduleAtFixedRate(this::asyncSendWakeup,
+                replicaPolicy.getSourceSendPeriod(), replicaPolicy.getSourceSendPeriod(), TimeUnit.MILLISECONDS);
+    }
+
+    void terminateScheduledExecutor() {
+        scheduler.shutdownNow();
     }
 
     void initializeJmx(ReplicationView replicationView) {

@@ -24,7 +24,7 @@ public interface ReplicationViewMBean {
     long getReplicationTps();
 
     @MBeanInfo("Set replication role for broker")
-    void setReplicationRole(String role, boolean force);
+    void setReplicationRole(String role, boolean force) throws Exception;
 
     @MBeanInfo("Get current replication role for broker")
     String getReplicationRole();
