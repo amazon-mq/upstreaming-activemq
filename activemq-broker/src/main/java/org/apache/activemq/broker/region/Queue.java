@@ -2497,6 +2497,59 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
         }
     }
 
+    public void dispatchNotification(Subscription sub, List<MessageReference> messageList) throws Exception {
+        for (MessageReference message : messageList) {
+            pagedInMessagesLock.writeLock().lock();
+            try {
+                if (!pagedInMessages.contains(message)) {
+                    pagedInMessages.addMessageLast(message);
+                }
+            } finally {
+                pagedInMessagesLock.writeLock().unlock();
+            }
+
+            pagedInPendingDispatchLock.writeLock().lock();
+            try {
+                if (dispatchPendingList.contains(message)) {
+                    dispatchPendingList.remove(message);
+                }
+            } finally {
+                pagedInPendingDispatchLock.writeLock().unlock();
+            }
+        }
+
+        Set<MessageId> messageIds = messageList.stream().map(MessageReference::getMessageId).collect(Collectors.toSet());
+        messagesLock.writeLock().lock();
+        try {
+            try {
+                int count = 0;
+                messages.setMaxBatchSize(getMaxPageSize());
+                messages.reset();
+                while (messages.hasNext()) {
+                    MessageReference node = messages.next();
+                    if (messageIds.contains(node.getMessageId())) {
+                        messages.remove();
+                        count++;
+                    }
+                    if (count == messageIds.size()) {
+                        break;
+                    }
+                }
+            } finally {
+                messages.release();
+            }
+        } finally {
+            messagesLock.writeLock().unlock();
+        }
+
+        for (MessageReference message : messageList) {
+            sub.add(message);
+            MessageDispatchNotification mdn = new MessageDispatchNotification();
+            mdn.setMessageId(message.getMessageId());
+            sub.processMessageDispatchNotification(mdn);
+        }
+    }
+
     private QueueMessageReference getMatchingMessage(MessageDispatchNotification messageDispatchNotification)
             throws Exception {
         QueueMessageReference message = null;
