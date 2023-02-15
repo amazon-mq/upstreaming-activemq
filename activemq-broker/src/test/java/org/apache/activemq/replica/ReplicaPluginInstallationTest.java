@@ -17,6 +17,7 @@
 package org.apache.activemq.replica;
 
 import org.apache.activemq.broker.Broker;
+import org.apache.activemq.broker.BrokerFilter;
 import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.broker.region.CompositeDestinationInterceptor;
 import org.apache.activemq.broker.region.DestinationInterceptor;
@@ -51,7 +52,11 @@ public class ReplicaPluginInstallationTest {
     @Test
     public void testInstallPluginWithDefaultRole() throws Exception {
         pluginUnderTest.setTransportConnectorUri("failover:(tcp://localhost:61616)");
-        assertTrue(pluginUnderTest.installPlugin(broker) instanceof ReplicaSourceAuthorizationBroker);
+        Broker installedBroker = pluginUnderTest.installPlugin(broker);
+        assertTrue(installedBroker instanceof ReplicaAuthorizationBroker);
+        Broker nextBroker = ((BrokerFilter) installedBroker).getNext();
+        assertTrue(nextBroker instanceof ReplicaRoleManagementBroker);
+        assertTrue(((BrokerFilter) nextBroker).getNext() instanceof ReplicaSourceBroker);
         assertEquals(ReplicaRole.source, pluginUnderTest.getRole());
     }
 
@@ -59,13 +64,10 @@ public class ReplicaPluginInstallationTest {
     public void testInstallPluginWithReplicaRole() throws Exception {
         pluginUnderTest.setRole(ReplicaRole.replica);
         pluginUnderTest.setOtherBrokerUri("failover:(tcp://localhost:61616)");
-        assertTrue(pluginUnderTest.installPlugin(broker) instanceof ReplicaBroker);
-    }
-
-    @Test
-    public void testInstallPluginWithDualRole() throws Exception {
-        pluginUnderTest.setRole(ReplicaRole.dual);
-        pluginUnderTest.setTransportConnectorUri("failover:(tcp://localhost:61616)");
-        assertTrue(pluginUnderTest.installPlugin(broker) instanceof ReplicaBroker);
+        Broker installedBroker = pluginUnderTest.installPlugin(broker);
+        assertTrue(installedBroker instanceof ReplicaAuthorizationBroker);
+        Broker nextBroker = ((BrokerFilter) installedBroker).getNext();
+        assertTrue(nextBroker instanceof ReplicaRoleManagementBroker);
+        assertTrue(((BrokerFilter) nextBroker).getNext() instanceof ReplicaBroker);
     }
 }

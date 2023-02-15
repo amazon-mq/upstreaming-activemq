@@ -115,7 +115,7 @@
         </shutdownHooks>
 
         <plugins>
-            <replicaPlugin role="dual" transportConnectorUri="tcp://0.0.0.0:61619?maximumConnections=1&amp;wireFormat.maxFrameSize=104857600" otherBrokerUri="tcp://localhost:61618" userName="replicaUser" password="replica"/>
+            <replicaPlugin role="replica" transportConnectorUri="tcp://0.0.0.0:61619?maximumConnections=1&amp;wireFormat.maxFrameSize=104857600" otherBrokerUri="tcp://localhost:61618" userName="replicaUser" password="replica"/>
         </plugins>
     </broker>
 

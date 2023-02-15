@@ -19,6 +19,9 @@ package org.apache.activemq.replica;
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.broker.Broker;
 import org.apache.activemq.broker.BrokerService;
+import org.apache.activemq.broker.region.CompositeDestinationInterceptor;
+import org.apache.activemq.broker.region.DestinationInterceptor;
+import org.apache.activemq.broker.region.RegionBroker;
 import org.assertj.core.api.SoftAssertions;
 import org.junit.Test;
 
@@ -159,6 +162,12 @@ public class ReplicaPluginTest {
         when(broker.getBrokerService()).thenReturn(brokerService);
         when(brokerService.isUseJmx()).thenReturn(false);
         String replicationTransport = "tcp://localhost:61616";
+
+        RegionBroker regionBroker = mock(RegionBroker.class);
+        when(broker.getAdaptor(RegionBroker.class)).thenReturn(regionBroker);
+        CompositeDestinationInterceptor cdi = mock(CompositeDestinationInterceptor.class);
+        when(regionBroker.getDestinationInterceptor()).thenReturn(cdi);
+        when(cdi.getInterceptors()).thenReturn(new DestinationInterceptor[]{});
 
         plugin.setRole(ReplicaRole.replica);
         plugin.setPassword(password);
