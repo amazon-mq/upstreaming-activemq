@@ -351,4 +351,9 @@ public class StoreQueueCursor extends AbstractPendingMessageCursor {
         reset();
     }
 
+    @Override
+    public void rebase(MessageId id) {
+        persistent.rebase(id);
+        reset();
+    }
 }

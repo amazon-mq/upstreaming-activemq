@@ -82,12 +82,17 @@ public abstract class AbstractStoreCursor extends AbstractPendingMessageCursor i
     public void rebase() {
         MessageId lastAdded = lastCachedIds[SYNC_ADD];
         if (lastAdded != null) {
-            try {
-                setBatch(lastAdded);
-            } catch (Exception e) {
-                LOG.error("{} - Failed to set batch on rebase", this, e);
-                throw new RuntimeException(e);
-            }
+            rebase(lastAdded);
+        }
+    }
+
+    @Override
+    public void rebase(MessageId id) {
+        try {
+            setBatch(id);
+        } catch (Exception e) {
+            LOG.error("{} - Failed to set batch on rebase", this, e);
+            throw new RuntimeException(e);
         }
     }
 

@@ -1606,17 +1606,27 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
             try {
                 messages.setMaxBatchSize(getMaxPageSize());
                 messages.reset();
-                while (messages.hasNext() && set.size() < maximumMessages) {
-                    MessageReference mr = messages.next();
-                    QueueMessageReference qmr = createMessageReference(mr.getMessage());
-                    qmr.decrementReferenceCount();
-                    messages.rollback(qmr.getMessageId());
-                    if (filter.evaluate(context, qmr)) {
-                        set.add(qmr);
+                int processed = 0;
+                while (processed < messages.size()) {
+                    MessageId lastMessageId = null;
+                    while (messages.hasNext() && set.size() < maximumMessages) {
+                        MessageReference mr = messages.next();
+                        QueueMessageReference qmr = createMessageReference(mr.getMessage());
+                        lastMessageId = qmr.getMessageId();
+                        qmr.decrementReferenceCount();
+                        messages.rollback(qmr.getMessageId());
+                        if (filter.evaluate(context, qmr)) {
+                            set.add(qmr);
+                        }
+                        processed++;
                     }
-
+                    if (lastMessageId != null && !messages.hasNext() && processed < messages.size()) {
+                        messages.gc();
+                        messages.rebase(lastMessageId);
+                    }
                 }
             } finally {
+                messages.rebase();
                 messages.release();
             }
         } finally {

@@ -405,4 +405,8 @@ public abstract class AbstractPendingMessageCursor implements PendingMessageCurs
     @Override
     public void rebase() {
     }
+
+    @Override
+    public void rebase(MessageId id) {
+    }
 }
