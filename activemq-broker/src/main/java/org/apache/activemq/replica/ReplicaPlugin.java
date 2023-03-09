@@ -23,6 +23,7 @@ import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.broker.MutableBrokerFilter;
 import org.apache.activemq.broker.jmx.AnnotatedMBean;
 import org.apache.activemq.broker.region.policy.PolicyEntry;
+import org.apache.activemq.broker.region.policy.PolicyMap;
 import org.apache.activemq.broker.scheduler.SchedulerBroker;
 import org.apache.activemq.command.ActiveMQQueue;
 import org.apache.activemq.replica.jmx.ReplicationJmxHelper;
@@ -81,6 +82,9 @@ public class ReplicaPlugin extends BrokerPluginSupport {
             PolicyEntry newPolicy = new PolicyEntry();
             newPolicy.setDestination(new ActiveMQQueue(queue));
             policyEntries.add(newPolicy);
+        }
+        if(brokerService.getDestinationPolicy() == null) {
+            brokerService.setDestinationPolicy(new PolicyMap());
         }
         brokerService.getDestinationPolicy().setPolicyEntries(policyEntries);
 

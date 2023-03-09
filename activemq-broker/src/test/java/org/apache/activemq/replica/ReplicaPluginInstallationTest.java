@@ -22,6 +22,7 @@ import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.broker.region.CompositeDestinationInterceptor;
 import org.apache.activemq.broker.region.DestinationInterceptor;
 import org.apache.activemq.broker.region.RegionBroker;
+import org.apache.activemq.broker.region.policy.PolicyMap;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -41,6 +42,7 @@ public class ReplicaPluginInstallationTest {
     public void setUp() {
         when(broker.getBrokerService()).thenReturn(brokerService);
         when(brokerService.isUseJmx()).thenReturn(false);
+        when(brokerService.getDestinationPolicy()).thenReturn(new PolicyMap());
 
         RegionBroker regionBroker = mock(RegionBroker.class);
         when(broker.getAdaptor(RegionBroker.class)).thenReturn(regionBroker);
