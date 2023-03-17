@@ -19,6 +19,7 @@ package org.apache.activemq.transport.amqp;
 import org.apache.activemq.broker.BrokerFactory;
 import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.broker.TransportConnector;
+import org.apache.activemq.broker.jmx.QueueViewMBean;
 import org.apache.activemq.command.ActiveMQDestination;
 import org.apache.activemq.command.ActiveMQQueue;
 import org.apache.activemq.command.ActiveMQTextMessage;
@@ -29,19 +30,21 @@ import org.apache.qpid.jms.JmsConnection;
 import org.apache.qpid.jms.JmsConnectionFactory;
 import org.junit.After;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.jms.Connection;
 import javax.jms.Message;
 import javax.jms.MessageConsumer;
 import javax.jms.MessageProducer;
 import javax.jms.Session;
 import javax.jms.TextMessage;
+import javax.management.MBeanServer;
+import javax.management.MBeanServerInvocationHandler;
+import javax.management.MalformedObjectNameException;
+import javax.management.ObjectName;
 import javax.net.ssl.KeyManager;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
@@ -64,11 +67,11 @@ public class ReplicaPluginAmqpConnectionTest extends TestSupport {
 
     public static final String PRIMARY_BROKER_CONFIG = "org/apache/activemq/transport/amqp/transport-protocol-test-primary.xml";
     public static final String REPLICA_BROKER_CONFIG = "org/apache/activemq/transport/amqp/transport-protocol-test-replica.xml";
+    public static final String ACTIVE_MQ_TEXT_MESSAGE = "ActiveMQTextMessage";
     private final String protocol;
     protected BrokerService firstBroker;
     protected BrokerService secondBroker;
     private JmsConnection firstBrokerConnection;
-    private JmsConnection secondBrokerConnection;
     protected ActiveMQDestination destination;
 
     @Before
@@ -91,13 +94,15 @@ public class ReplicaPluginAmqpConnectionTest extends TestSupport {
         System.setProperty("javax.net.ssl.keyStorePassword", PASSWORD);
         System.setProperty("javax.net.ssl.keyStoreType", KEYSTORE_TYPE);
 
-        firstBroker =  setUpBrokerService(PRIMARY_BROKER_CONFIG);
         secondBroker =  setUpBrokerService(REPLICA_BROKER_CONFIG);
-
-        firstBroker.start();
+        secondBroker.getBroker().getBrokerService().setSslContext(sslContext);
         secondBroker.start();
-        firstBroker.waitUntilStarted();
         secondBroker.waitUntilStarted();
+
+        firstBroker =  setUpBrokerService(PRIMARY_BROKER_CONFIG);
+        firstBroker.getBroker().getBrokerService().setSslContext(sslContext);
+        firstBroker.start();
+        firstBroker.waitUntilStarted();
 
         destination = new ActiveMQQueue(getClass().getName());
     }
@@ -105,12 +110,12 @@ public class ReplicaPluginAmqpConnectionTest extends TestSupport {
     @After
     public void tearDown() throws Exception {
         firstBrokerConnection.close();
-        secondBrokerConnection.close();
         if (firstBroker != null) {
             try {
                 firstBroker.stop();
                 firstBroker.waitUntilStopped();
             } catch (Exception e) {
+                LOG.error(e.getMessage());
             }
         }
         if (secondBroker != null) {
@@ -118,6 +123,7 @@ public class ReplicaPluginAmqpConnectionTest extends TestSupport {
                 secondBroker.stop();
                 secondBroker.waitUntilStopped();
             } catch (Exception e) {
+                LOG.error(e.getMessage());
             }
         }
     }
@@ -125,48 +131,55 @@ public class ReplicaPluginAmqpConnectionTest extends TestSupport {
     @Parameterized.Parameters(name="protocol={0}")
     public static Collection<String[]> getTestParameters() {
         return Arrays.asList(new String[][] {
-            {"amqp"}, {"amqp+ssl"}, {"amqp+nio+ssl"}, {"amqp+nio"},
+                {"amqp"} // {"amqp+ssl"}, {"amqp+nio+ssl"}, {"amqp+nio"}, {"amqp+ssl"},
         });
     }
 
     @Test
-    @Ignore
-    public void messageSendAndReceive() throws Exception {
-        JmsConnectionFactory firstBrokerFactory = createConnectionFactory(firstBroker.getTransportConnectorByScheme(protocol));
-        firstBrokerConnection = (JmsConnection) firstBrokerFactory.createConnection();
-        firstBrokerConnection.setClientID("testMessageSendAndReceive-" + System.currentTimeMillis());
-        secondBrokerConnection = (JmsConnection) createConnectionFactory(secondBroker.getTransportConnectorByScheme(protocol)).createConnection();
-        secondBrokerConnection.setClientID("testMessageSendAndReceive-" + System.currentTimeMillis());
+    public void testMessageSendAndReceive() throws Exception {
+        TransportConnector firstBrokerConnector = firstBroker.getTransportConnectorByScheme(protocol);
+        firstBrokerConnection = (JmsConnection) createConnectionFactory(firstBrokerConnector).createConnection();
         firstBrokerConnection.start();
-        secondBrokerConnection.start();
-
         Session firstBrokerSession = firstBrokerConnection.createSession(false, Session.CLIENT_ACKNOWLEDGE);
-        Session secondBrokerSession = secondBrokerConnection.createSession(false, Session.CLIENT_ACKNOWLEDGE);
+
         MessageProducer firstBrokerProducer = firstBrokerSession.createProducer(destination);
-        MessageConsumer secondBrokerConsumer = secondBrokerSession.createConsumer(destination);
-
-
         ActiveMQTextMessage message  = new ActiveMQTextMessage();
-        message.setText(getName());
+        message.setText(ACTIVE_MQ_TEXT_MESSAGE);
         firstBrokerProducer.send(message);
+        Thread.sleep(LONG_TIMEOUT);
 
-        Message receivedMessage = secondBrokerConsumer.receive(LONG_TIMEOUT);
-        assertEquals(getName(), ((TextMessage) receivedMessage).getText());
+        QueueViewMBean secondBrokerQueueViewMBean = getQueueView(secondBroker, destination.getPhysicalName());
+        // check that message is replicated
+        assertEquals(secondBrokerQueueViewMBean.getEnqueueCount(), 1);
 
+        MessageConsumer firstBrokerConsumer = firstBrokerSession.createConsumer(destination);
+        Message receivedMessage = firstBrokerConsumer.receive(LONG_TIMEOUT);
+        TextMessage msg = (TextMessage) receivedMessage;
+        assertEquals(ACTIVE_MQ_TEXT_MESSAGE, msg.getText());
 
-        Connection firstBrokerConsumerConnection = JMSClientContext.INSTANCE.createConnection(URI.create(protocol + "://localhost:" + firstBroker.getTransportConnectorByScheme(protocol).getConnectUri().getPort()));
-        firstBrokerConsumerConnection.start();
-        Session firstBrokerConsumerSession = firstBrokerConsumerConnection.createSession(false, Session.CLIENT_ACKNOWLEDGE);
-        MessageConsumer firstBrokerConsumer = firstBrokerConsumerSession.createConsumer(destination);
-        receivedMessage = firstBrokerConsumer.receive(LONG_TIMEOUT);
-        assertNotNull(receivedMessage);
         receivedMessage.acknowledge();
+        Thread.sleep(LONG_TIMEOUT);
 
-        receivedMessage = secondBrokerConsumer.receive(LONG_TIMEOUT);
-        assertNull(receivedMessage);
+        // check that ack is replicated and message is dispatched on the replica broker
+        assertEquals(secondBrokerQueueViewMBean.getDequeueCount(), 1);
+    }
 
-        firstBrokerSession.close();
-        secondBrokerSession.close();
+    protected QueueViewMBean getQueueView(BrokerService broker, String queueName) throws MalformedObjectNameException {
+        MBeanServer mbeanServer = broker.getManagementContext().getMBeanServer();
+        String objectNameStr = broker.getBrokerObjectName().toString();
+        objectNameStr += ",destinationType=Queue,destinationName="+queueName;
+        ObjectName queueViewMBeanName = assertRegisteredObjectName(mbeanServer, objectNameStr);
+        return MBeanServerInvocationHandler.newProxyInstance(mbeanServer, queueViewMBeanName, QueueViewMBean.class, true);
+    }
+
+    private ObjectName assertRegisteredObjectName(MBeanServer mbeanServer, String name) throws MalformedObjectNameException, NullPointerException {
+        ObjectName objectName = new ObjectName(name);
+        if (mbeanServer.isRegistered(objectName)) {
+            System.out.println("Bean Registered: " + objectName);
+        } else {
+            fail("Could not find MBean!: " + objectName);
+        }
+        return objectName;
     }
 
     private JmsConnectionFactory createConnectionFactory(TransportConnector connector) throws IOException, URISyntaxException {
