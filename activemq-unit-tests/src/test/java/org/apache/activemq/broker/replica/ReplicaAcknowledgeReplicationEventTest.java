@@ -46,7 +46,6 @@ import javax.jms.Message;
 import javax.jms.MessageListener;
 import javax.jms.MessageProducer;
 import javax.jms.Session;
-
 import java.text.MessageFormat;
 import java.util.LinkedList;
 
