@@ -53,7 +53,6 @@ public class ReplicaCompactor {
     private static final Logger logger = LoggerFactory.getLogger(ReplicaCompactor.class);
 
     private final Broker broker;
-    private final ConnectionContext connectionContext;
     private final ReplicaReplicationQueueSupplier queueProvider;
     private final PrefetchSubscription subscription;
     private final int additionalMessagesLimit;
@@ -61,11 +60,9 @@ public class ReplicaCompactor {
 
     private final Queue intermediateQueue;
 
-    public ReplicaCompactor(Broker broker, ConnectionContext connectionContext,
-            ReplicaReplicationQueueSupplier queueProvider, PrefetchSubscription subscription,
+    public ReplicaCompactor(Broker broker, ReplicaReplicationQueueSupplier queueProvider, PrefetchSubscription subscription,
             int additionalMessagesLimit, AtomicLong tpsCounter) {
         this.broker = broker;
-        this.connectionContext = connectionContext;
         this.queueProvider = queueProvider;
         this.subscription = subscription;
         this.additionalMessagesLimit = additionalMessagesLimit;
@@ -75,7 +72,8 @@ public class ReplicaCompactor {
                 .map(DestinationExtractor::extractQueue).orElseThrow();
     }
 
-    List<MessageReference> compactAndFilter(List<MessageReference> list, boolean withAdditionalMessages) throws Exception {
+    List<MessageReference> compactAndFilter(ConnectionContext connectionContext, List<MessageReference> list,
+            boolean withAdditionalMessages) throws Exception {
         List<DeliveredMessageReference> toProcess = list.stream()
                 .map(DeliveredMessageReference::new)
                 .collect(Collectors.toList());
@@ -88,10 +86,10 @@ public class ReplicaCompactor {
                 subscription.setPrefetchSize(0);
                 intermediateQueue.setMaxPageSize(0);
                 intermediateQueue.setMaxExpirePageSize(0);
-                toProcess.addAll(getAdditionalMessages(list));
+                toProcess.addAll(getAdditionalMessages(connectionContext, list));
             }
 
-            List<DeliveredMessageReference> processed = compactAndFilter0(toProcess);
+            List<DeliveredMessageReference> processed = compactAndFilter0(connectionContext, toProcess);
 
             Set<MessageId> messageIds = list.stream().map(MessageReference::getMessageId).collect(Collectors.toSet());
 
@@ -106,8 +104,8 @@ public class ReplicaCompactor {
         }
     }
 
-    private List<DeliveredMessageReference> getAdditionalMessages(List<MessageReference> toProcess) throws Exception {
-
+    private List<DeliveredMessageReference> getAdditionalMessages(ConnectionContext connectionContext,
+            List<MessageReference> toProcess) throws Exception {
         List<MessageReference> dispatched = subscription.getDispatched();
         Set<String> dispatchedMessageIds = dispatched.stream()
                 .map(MessageReference::getMessageId)
@@ -145,7 +143,8 @@ public class ReplicaCompactor {
         return new ArrayList<>();
     }
 
-    private List<DeliveredMessageReference> compactAndFilter0(List<DeliveredMessageReference> list) throws Exception {
+    private List<DeliveredMessageReference> compactAndFilter0(ConnectionContext connectionContext,
+            List<DeliveredMessageReference> list) throws Exception {
         List<DeliveredMessageReference> result = new ArrayList<>(list);
 
         List<SendsAndAcks> sendsAndAcksList = combineByDestination(list);
@@ -156,7 +155,7 @@ public class ReplicaCompactor {
             return result;
         }
 
-        acknowledge(toDelete);
+        acknowledge(connectionContext, toDelete);
 
         Set<MessageId> messageIds = toDelete.stream().map(dmid -> dmid.messageReference.getMessageId()).collect(Collectors.toSet());
         result.removeIf(reference -> messageIds.contains(reference.messageReference.getMessageId()));
@@ -166,7 +165,7 @@ public class ReplicaCompactor {
         return result;
     }
 
-    private void acknowledge(List<DeliveredMessageReference> list) throws Exception {
+    private void acknowledge(ConnectionContext connectionContext, List<DeliveredMessageReference> list) throws Exception {
         List<MessageReference> notDelivered = list.stream()
                 .filter(dmr -> !dmr.delivered)
                 .map(DeliveredMessageReference::getReference)

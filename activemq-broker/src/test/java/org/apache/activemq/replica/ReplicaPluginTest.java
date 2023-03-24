@@ -22,6 +22,7 @@ import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.broker.region.CompositeDestinationInterceptor;
 import org.apache.activemq.broker.region.DestinationInterceptor;
 import org.apache.activemq.broker.region.RegionBroker;
+import org.apache.activemq.broker.region.policy.PolicyMap;
 import org.assertj.core.api.SoftAssertions;
 import org.junit.Test;
 
@@ -159,6 +160,7 @@ public class ReplicaPluginTest {
         String password = "testPassword";
         Broker broker = mock(Broker.class);
         BrokerService brokerService = mock(BrokerService.class);
+        when(brokerService.getDestinationPolicy()).thenReturn(new PolicyMap());
         when(broker.getBrokerService()).thenReturn(brokerService);
         when(brokerService.isUseJmx()).thenReturn(false);
         String replicationTransport = "tcp://localhost:61616";

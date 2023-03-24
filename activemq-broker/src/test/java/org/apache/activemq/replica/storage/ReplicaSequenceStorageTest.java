@@ -25,7 +25,6 @@ import org.apache.activemq.broker.region.QueueMessageReference;
 import org.apache.activemq.command.ActiveMQQueue;
 import org.apache.activemq.command.ActiveMQTextMessage;
 import org.apache.activemq.command.ConnectionId;
-import org.apache.activemq.command.ConsumerInfo;
 import org.apache.activemq.command.LocalTransactionId;
 import org.apache.activemq.command.MessageAck;
 import org.apache.activemq.command.MessageId;
@@ -45,7 +44,6 @@ import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -78,14 +76,14 @@ public class ReplicaSequenceStorageTest {
         when(broker.addConsumer(any(), any())).thenReturn(subscription);
         when(queueProvider.getSequenceQueue()).thenReturn(sequenceQueueDestination);
 
-        this.replicaSequenceStorage = new ReplicaSequenceStorage(broker, connectionContext, queueProvider, replicaProducer, SEQUENCE_NAME);
+        this.replicaSequenceStorage = new ReplicaSequenceStorage(broker, queueProvider, replicaProducer, SEQUENCE_NAME);
     }
 
     @Test
     public void shouldInitializeWhenNoMessagesExist() throws Exception {
         when(subscription.getDispatched()).thenReturn(new ArrayList<>()).thenReturn(new ArrayList<>());
 
-        String initialize = replicaSequenceStorage.initialize();
+        String initialize = replicaSequenceStorage.initialize(connectionContext);
         assertThat(initialize).isNull();
         verify(sequenceQueue, never()).removeMessage(any());
     }
@@ -104,7 +102,7 @@ public class ReplicaSequenceStorageTest {
         when(subscription.getDispatched())
                 .thenReturn(List.of(new IndirectMessageReference(message1), new IndirectMessageReference(message2)));
 
-        String initialize = replicaSequenceStorage.initialize();
+        String initialize = replicaSequenceStorage.initialize(connectionContext);
         assertThat(initialize).isEqualTo(message1.getText());
         verify(sequenceQueue, times(1)).removeMessage(eq(message1.getMessageId().toString()));
     }
@@ -115,9 +113,9 @@ public class ReplicaSequenceStorageTest {
         TransactionId transactionId = new LocalTransactionId(new ConnectionId("10101010"), 101010);
         ArgumentCaptor<ActiveMQTextMessage> activeMQTextMessageArgumentCaptor = ArgumentCaptor.forClass(ActiveMQTextMessage.class);
         when(subscription.getDispatched()).thenReturn(new ArrayList<>());
-        replicaSequenceStorage.initialize();
+        replicaSequenceStorage.initialize(connectionContext);
 
-        replicaSequenceStorage.enqueue(transactionId, messageToEnqueue);
+        replicaSequenceStorage.enqueue(connectionContext, transactionId, messageToEnqueue);
 
         verify(replicaProducer, times(1)).sendIgnoringFlowControl(any(), activeMQTextMessageArgumentCaptor.capture());
         assertThat(activeMQTextMessageArgumentCaptor.getValue().getText()).isEqualTo(messageToEnqueue);
@@ -148,14 +146,14 @@ public class ReplicaSequenceStorageTest {
         when(messageReference2.getMessageId()).thenReturn(message2.getMessageId());
 
         when(subscription.getDispatched()).thenReturn(List.of(messageReference1, messageReference2));
-        replicaSequenceStorage.initialize();
+        replicaSequenceStorage.initialize(connectionContext);
 
         ArgumentCaptor<MessageAck> ackArgumentCaptor = ArgumentCaptor.forClass(MessageAck.class);
 
         String messageToEnqueue = "THIS IS A MESSAGE";
         TransactionId transactionId = new LocalTransactionId(new ConnectionId("10101010"), 101010);
 
-        replicaSequenceStorage.enqueue(transactionId, messageToEnqueue);
+        replicaSequenceStorage.enqueue(connectionContext, transactionId, messageToEnqueue);
         verify(broker).acknowledge(any(), ackArgumentCaptor.capture());
         MessageAck value = ackArgumentCaptor.getValue();
         assertThat(value.getFirstMessageId()).isEqualTo(message1.getMessageId());
