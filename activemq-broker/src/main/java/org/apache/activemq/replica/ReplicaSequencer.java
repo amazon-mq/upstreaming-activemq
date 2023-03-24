@@ -569,7 +569,6 @@ public class ReplicaSequencer {
                     .orElseThrow(() -> new IllegalStateException("Cannot get message reference from batch"));
 
             ActiveMQMessage originalMessage = (ActiveMQMessage) reference.getMessage();
-            sequence = sequence.add(BigInteger.ONE);
             ActiveMQMessage message = (ActiveMQMessage) originalMessage.copy();
 
             message.setStringProperty(ReplicaSupport.SEQUENCE_PROPERTY, sequence.toString());
@@ -578,6 +577,7 @@ public class ReplicaSequencer {
             message.setTransactionId(null);
             message.setPersistent(false);
             replicaInternalMessageProducer.sendIgnoringFlowControl(connectionContext, message);
+            sequence = sequence.add(BigInteger.ONE);
             return sequence;
         }
 
