@@ -85,7 +85,7 @@ public class ReplicaPlugin extends BrokerPluginSupport {
             newPolicy.setDestination(new ActiveMQQueue(queue));
             policyEntries.add(newPolicy);
         }
-        if(brokerService.getDestinationPolicy() == null) {
+        if (brokerService.getDestinationPolicy() == null) {
             brokerService.setDestinationPolicy(new PolicyMap());
         }
         brokerService.getDestinationPolicy().setPolicyEntries(policyEntries);
@@ -95,21 +95,24 @@ public class ReplicaPlugin extends BrokerPluginSupport {
             advisoryBroker.setNext(new ReplicaAdvisorySuppressor(advisoryBroker.getNext()));
         }
 
-        Broker sourceBroker = buildSourceBroker(broker);
-        Broker replicaBroker = buildReplicaBroker(broker);
+        WebConsoleAccessController webConsoleAccessController = new WebConsoleAccessController(brokerService,
+                replicaPolicy.isControlWebConsoleAccess());
+
+        MutativeRoleBroker sourceBroker = buildSourceBroker(broker, webConsoleAccessController);
+        MutativeRoleBroker replicaBroker = buildReplicaBroker(broker, webConsoleAccessController);
 
         replicaRoleManagementBroker = new ReplicaRoleManagementBroker(broker, sourceBroker, replicaBroker, role);
-        ((MutativeRoleBroker) sourceBroker).initializeRoleChangeCallBack(replicaRoleManagementBroker);
-        ((MutativeRoleBroker) replicaBroker).initializeRoleChangeCallBack(replicaRoleManagementBroker);
+        sourceBroker.initializeRoleChangeCallBack(replicaRoleManagementBroker);
+        replicaBroker.initializeRoleChangeCallBack(replicaRoleManagementBroker);
 
         return new ReplicaAuthorizationBroker(replicaRoleManagementBroker);
     }
 
-    private Broker buildReplicaBroker(Broker broker) {
-        return new ReplicaBroker(broker, queueProvider, replicaPolicy);
+    private MutativeRoleBroker buildReplicaBroker(Broker broker, WebConsoleAccessController webConsoleAccessController) {
+        return new ReplicaBroker(broker, queueProvider, replicaPolicy, webConsoleAccessController);
     }
 
-    private Broker buildSourceBroker(Broker broker) {
+    private MutativeRoleBroker buildSourceBroker(Broker broker, WebConsoleAccessController webConsoleAccessController) {
         ReplicaInternalMessageProducer replicaInternalMessageProducer =
                 new ReplicaInternalMessageProducer(broker);
         ReplicationMessageProducer replicationMessageProducer =
@@ -119,8 +122,8 @@ public class ReplicaPlugin extends BrokerPluginSupport {
                 replicationMessageProducer, replicaPolicy);
         replicaSequencer.initializeJmx(replicationView);
 
-        Broker sourceBroker = new ReplicaSourceBroker(broker, replicationMessageProducer, replicaSequencer,
-                        queueProvider, replicaPolicy);
+        ReplicaSourceBroker sourceBroker = new ReplicaSourceBroker(broker, replicationMessageProducer, replicaSequencer,
+                        queueProvider, replicaPolicy, webConsoleAccessController);
 
         MutableBrokerFilter scheduledBroker = (MutableBrokerFilter) broker.getAdaptor(SchedulerBroker.class);
         if (scheduledBroker != null) {
@@ -220,6 +223,13 @@ public class ReplicaPlugin extends BrokerPluginSupport {
         replicaPolicy.setReplicaMaxAckBatchSize(size);
     }
 
+    /**
+     * @org.apache.xbean.Property propertyEditor="com.sun.beans.editors.StringEditor"
+     */
+    public void setControlWebConsoleAccess(boolean controlWebConsoleAccess) {
+        replicaPolicy.setControlWebConsoleAccess(controlWebConsoleAccess);
+    }
+
     public ReplicaRole getRole() {
         return role;
     }
@@ -230,7 +240,7 @@ public class ReplicaPlugin extends BrokerPluginSupport {
             return;
         }
 
-        if ( role != ReplicaRole.replica && role != ReplicaRole.source ) {
+        if (role != ReplicaRole.replica && role != ReplicaRole.source) {
             throw new RuntimeException(String.format("Can't switch role from [source] to [%s]", role.name()));
         }
 

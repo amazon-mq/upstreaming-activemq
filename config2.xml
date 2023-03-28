@@ -34,7 +34,6 @@
         <destinations>
             <queue physicalName="FOO.BAR"/>
             <topic physicalName="SOME.TOPIC"/>
-            <queue physicalName="ActiveMQ.Plugin.Replication.Queue"/>
         </destinations>
 
         <destinationPolicy>

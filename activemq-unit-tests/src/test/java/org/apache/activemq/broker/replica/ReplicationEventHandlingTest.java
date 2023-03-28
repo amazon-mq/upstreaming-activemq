@@ -38,6 +38,7 @@ import org.apache.activemq.replica.ReplicaPolicy;
 import org.apache.activemq.replica.ReplicaReplicationQueueSupplier;
 import org.apache.activemq.replica.ReplicaRole;
 import org.apache.activemq.replica.ReplicaSupport;
+import org.apache.activemq.replica.WebConsoleAccessController;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -254,7 +255,8 @@ public class ReplicationEventHandlingTest extends ReplicaPluginTestSupport {
             public Broker installPlugin(final Broker broker) {
                 nextBrokerSpy = spy(broker);
                 testQueueProvider = new ReplicaReplicationQueueSupplier(broker);
-                return new ReplicaBroker(nextBrokerSpy, testQueueProvider, mockReplicaPolicy);
+                return new ReplicaBroker(nextBrokerSpy, testQueueProvider, mockReplicaPolicy,
+                        new WebConsoleAccessController(broker.getBrokerService(), false));
             }
         };
         replicaPlugin.setRole(ReplicaRole.replica);
