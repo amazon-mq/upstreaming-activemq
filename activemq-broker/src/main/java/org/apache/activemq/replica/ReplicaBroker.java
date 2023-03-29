@@ -121,6 +121,7 @@ public class ReplicaBroker extends BrokerFilter implements MutativeRoleBroker {
             }
         }, replicaPolicy.getReplicaAckPeriod(), replicaPolicy.getReplicaAckPeriod(), TimeUnit.MILLISECONDS);
         messageListener = new ReplicaBrokerEventListener(getNext(), queueProvider, periodAcknowledgeCallBack, actionListenerCallback, replicaFailOverStateStorage);
+        getBrokerService().stopAllConnectors(new ServiceStopper());
     }
 
     private void stopAllConnections() throws JMSException {
