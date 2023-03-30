@@ -116,7 +116,7 @@ xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.sprin
     </shutdownHooks>
 
     <plugins>
-        <replicaPlugin role="source" transportConnectorUri="tcp://0.0.0.0:61618?maximumConnections=1&amp;wireFormat.maxFrameSize=104857600" otherBrokerUri="tcp://localhost:61619" userName="replicaUser" password="replica"/>
+        <replicaPlugin role="source" transportConnectorUri="tcp://0.0.0.0:61618?maximumConnections=1&amp;wireFormat.maxFrameSize=104857600" otherBrokerUri="tcp://localhost:61619" userName="replicaUser" password="replica" controlWebConsoleAccess="false"/>
         <jaasAuthenticationPlugin configuration="activemq-domain" />
         <authorizationPlugin>
             <map>
