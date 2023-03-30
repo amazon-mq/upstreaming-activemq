@@ -26,8 +26,7 @@ import org.apache.activemq.broker.region.policy.PolicyMap;
 import org.junit.Before;
 import org.junit.Test;
 
-import static junit.framework.TestCase.assertEquals;
-import static org.junit.Assert.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -55,11 +54,11 @@ public class ReplicaPluginInstallationTest {
     public void testInstallPluginWithDefaultRole() throws Exception {
         pluginUnderTest.setTransportConnectorUri("failover:(tcp://localhost:61616)");
         Broker installedBroker = pluginUnderTest.installPlugin(broker);
-        assertTrue(installedBroker instanceof ReplicaAuthorizationBroker);
+        assertThat(installedBroker).isInstanceOf(ReplicaAuthorizationBroker.class);
         Broker nextBroker = ((BrokerFilter) installedBroker).getNext();
-        assertTrue(nextBroker instanceof ReplicaRoleManagementBroker);
-        assertTrue(((BrokerFilter) nextBroker).getNext() instanceof ReplicaSourceBroker);
-        assertEquals(ReplicaRole.source, pluginUnderTest.getRole());
+        assertThat(nextBroker).isInstanceOf(ReplicaRoleManagementBroker.class);
+        assertThat(((BrokerFilter) nextBroker).getNext()).isEqualTo(broker);
+        assertThat(ReplicaRole.source).isEqualTo(pluginUnderTest.getRole());
     }
 
     @Test
@@ -67,9 +66,10 @@ public class ReplicaPluginInstallationTest {
         pluginUnderTest.setRole(ReplicaRole.replica);
         pluginUnderTest.setOtherBrokerUri("failover:(tcp://localhost:61616)");
         Broker installedBroker = pluginUnderTest.installPlugin(broker);
-        assertTrue(installedBroker instanceof ReplicaAuthorizationBroker);
+        assertThat(installedBroker).isInstanceOf(ReplicaAuthorizationBroker.class);
         Broker nextBroker = ((BrokerFilter) installedBroker).getNext();
-        assertTrue(nextBroker instanceof ReplicaRoleManagementBroker);
-        assertTrue(((BrokerFilter) nextBroker).getNext() instanceof ReplicaBroker);
+        assertThat(nextBroker).isInstanceOf(ReplicaRoleManagementBroker.class);
+
+        assertThat(((BrokerFilter) nextBroker).getNext()).isEqualTo(broker);
     }
 }

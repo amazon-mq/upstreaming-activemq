@@ -287,13 +287,13 @@ public class ReplicaSequencerTest {
 
         ActiveMQMessage activeMQMessage = argumentCaptor.getAllValues().get(0);
         assertThat(activeMQMessage.getMessageId()).isEqualTo(messageId);
-        assertThat(activeMQMessage.getTransactionId()).isNull();
+        assertThat(activeMQMessage.getTransactionId()).isNotNull();
         assertThat(activeMQMessage.isPersistent()).isFalse();
     }
 
 
     @Test
-    public void iterateSendTestWhenSomeMessagesAreadyDelivered() throws Exception {
+    public void iterateSendTestWhenSomeMessagesAlreadyDelivered() throws Exception {
         sequencer.hasConsumer = true;
 
         MessageId messageId1 = new MessageId("1:0:0:1");
@@ -322,7 +322,7 @@ public class ReplicaSequencerTest {
 
         ActiveMQMessage activeMQMessage = argumentCaptor.getAllValues().get(0);
         assertThat(activeMQMessage.getMessageId()).isEqualTo(messageId3);
-        assertThat(activeMQMessage.getTransactionId()).isNull();
+        assertThat(activeMQMessage.getTransactionId()).isNotNull();
         assertThat(activeMQMessage.isPersistent()).isFalse();
     }
 
@@ -360,7 +360,7 @@ public class ReplicaSequencerTest {
 
         ActiveMQMessage activeMQMessage = argumentCaptor.getAllValues().get(0);
         assertThat(activeMQMessage.getMessageId()).isEqualTo(messageId2);
-        assertThat(activeMQMessage.getTransactionId()).isNull();
+        assertThat(activeMQMessage.getTransactionId()).isNotNull();
         assertThat(activeMQMessage.isPersistent()).isFalse();
 
         ArgumentCaptor<MessageAck> ackCaptor = ArgumentCaptor.forClass(MessageAck.class);

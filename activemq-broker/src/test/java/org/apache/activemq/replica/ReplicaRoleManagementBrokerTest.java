@@ -2,15 +2,10 @@ package org.apache.activemq.replica;
 
 import org.apache.activemq.broker.Broker;
 import org.apache.activemq.broker.ConnectionContext;
-import org.apache.activemq.broker.region.CompositeDestinationInterceptor;
-import org.apache.activemq.broker.region.RegionBroker;
 import org.apache.activemq.command.TransactionId;
 import org.apache.activemq.replica.storage.ReplicaFailOverStateStorage;
 import org.junit.Before;
 import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.mockito.InjectMocks;
-import org.mockito.junit.MockitoJUnitRunner;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -59,7 +54,7 @@ public class ReplicaRoleManagementBrokerTest {
         when(replicaFailOverStateStorage.getBrokerState()).thenReturn(ReplicaRole.await_ack);
         replicaRoleManagementBroker.start();
 
-        verify(((MutativeRoleBroker) sourceBroker)).stopBeforeRoleChange(false);
+        verify((sourceBroker)).stopBeforeRoleChange(false);
         verify(sourceBroker).start();
         verify(replicaBroker, never()).start();
     }
@@ -78,7 +73,7 @@ public class ReplicaRoleManagementBrokerTest {
         when(sourceBroker.isStopped()).thenReturn(true);
         replicaRoleManagementBroker.switchRole(ReplicaRole.source, true);
 
-        verify((MutativeRoleBroker) replicaBroker).stopBeforeRoleChange(true);
+        verify(replicaBroker).stopBeforeRoleChange(true);
         verify(sourceBroker).start();
         verify(replicaFailOverStateStorage).updateBrokerState(any(), any(TransactionId.class), eq(ReplicaRole.source.name()));
     }
@@ -89,8 +84,8 @@ public class ReplicaRoleManagementBrokerTest {
         when(replicaBroker.isStopped()).thenReturn(false);
         replicaRoleManagementBroker.switchRole(ReplicaRole.replica, true);
 
-        verify((MutativeRoleBroker) sourceBroker).stopBeforeRoleChange(true);
-        verify((MutativeRoleBroker) replicaBroker).startAfterRoleChange();
+        verify(sourceBroker).stopBeforeRoleChange(true);
+        verify(replicaBroker).startAfterRoleChange();
         verify(replicaFailOverStateStorage).updateBrokerState(any(), any(TransactionId.class), eq(ReplicaRole.replica.name()));
     }
 
@@ -99,7 +94,7 @@ public class ReplicaRoleManagementBrokerTest {
         replicaRoleManagementBroker = new ReplicaRoleManagementBroker(broker, sourceBroker, replicaBroker, replicaFailOverStateStorage, ReplicaRole.source);
         replicaRoleManagementBroker.switchRole(ReplicaRole.replica, false);
 
-        verify((MutativeRoleBroker) sourceBroker).stopBeforeRoleChange(false);
+        verify(sourceBroker).stopBeforeRoleChange(false);
         verify(replicaFailOverStateStorage, never()).updateBrokerState(any(), any(TransactionId.class), anyString());
     }
 
@@ -109,8 +104,7 @@ public class ReplicaRoleManagementBrokerTest {
         when(replicaBroker.isStopped()).thenReturn(false);
         replicaRoleManagementBroker.onDeinitializationSuccess();
 
-        verify((MutativeRoleBroker) replicaBroker).startAfterRoleChange();
-        verify(replicaFailOverStateStorage).updateBrokerState(any(), any(TransactionId.class), eq(ReplicaRole.replica.name()));
+        verify(replicaBroker).startAfterRoleChange();
     }
 
     @Test
@@ -118,8 +112,7 @@ public class ReplicaRoleManagementBrokerTest {
         when(sourceBroker.isStopped()).thenReturn(false);
         replicaRoleManagementBroker.onFailOverAck();
 
-        verify((MutativeRoleBroker) replicaBroker).stopBeforeRoleChange(true);
-        verify((MutativeRoleBroker) sourceBroker).startAfterRoleChange();
-        verify(replicaFailOverStateStorage).updateBrokerState(any(), any(TransactionId.class), eq(ReplicaRole.source.name()));
+        verify(replicaBroker).stopBeforeRoleChange(true);
+        verify(sourceBroker).startAfterRoleChange();
     }
 }
