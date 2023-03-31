@@ -275,7 +275,7 @@ public class ReplicaSourceBroker extends BrokerFilter implements MutativeRoleBro
         return true;
     }
 
-    private void replicateSend(ConnectionContext context, Message message, TransactionId transactionId) {
+    public void replicateSend(ConnectionContext context, Message message, TransactionId transactionId) {
         try {
             TransactionId originalTransactionId = message.getTransactionId();
             enqueueReplicaEvent(
@@ -565,6 +565,20 @@ public class ReplicaSourceBroker extends BrokerFilter implements MutativeRoleBro
         }
     }
 
+    public void replicateSend(ProducerBrokerExchange producerExchange, Message messageSend) throws Exception {
+        final ConnectionContext connectionContext = producerExchange.getConnectionContext();
+        if (!needToReplicateSend(connectionContext, messageSend)) {
+            return;
+        }
+
+        TransactionId transactionId = null;
+        if (messageSend.getTransactionId() != null && !messageSend.getTransactionId().isXATransaction()) {
+            transactionId = messageSend.getTransactionId();
+        }
+
+        replicateSend(connectionContext, messageSend, transactionId);
+    }
+
     @Override
     public void send(ProducerBrokerExchange producerExchange, Message messageSend) throws Exception {
         final ConnectionContext connectionContext = producerExchange.getConnectionContext();
@@ -589,7 +603,6 @@ public class ReplicaSourceBroker extends BrokerFilter implements MutativeRoleBro
         }
         try {
             super.send(producerExchange, messageSend);
-            replicateSend(connectionContext, messageSend, transactionId);
             if (isInternalTransaction) {
                 super.commitTransaction(connectionContext, transactionId, true);
             }
