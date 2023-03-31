@@ -27,8 +27,6 @@ import org.apache.activemq.broker.region.virtual.VirtualDestinationInterceptor;
 import org.apache.activemq.command.ActiveMQQueue;
 import org.apache.activemq.command.ActiveMQTextMessage;
 import org.apache.activemq.command.ActiveMQTopic;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import javax.jms.Connection;
 import javax.jms.Message;
@@ -42,8 +40,6 @@ import java.util.Arrays;
 import java.util.Collections;
 
 public class ReplicaPluginVirtualDestinationTest extends ReplicaPluginTestSupport {
-
-    private static final Logger LOG = LoggerFactory.getLogger(ReplicaPluginVirtualDestinationTest.class);
 
     protected Connection firstBrokerConnection;
     protected Connection secondBrokerConnection;

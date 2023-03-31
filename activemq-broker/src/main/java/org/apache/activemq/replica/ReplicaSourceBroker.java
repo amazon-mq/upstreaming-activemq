@@ -297,7 +297,7 @@ public class ReplicaSourceBroker extends BrokerFilter implements MutativeRoleBro
         }
     }
 
-    private boolean needToReplicateSend(ConnectionContext connectionContext, Message message) {
+    public boolean needToReplicateSend(ConnectionContext connectionContext, Message message) {
         if (isReplicaContext(connectionContext)) {
             return false;
         }
@@ -563,20 +563,6 @@ public class ReplicaSourceBroker extends BrokerFilter implements MutativeRoleBro
         if (xid.isXATransaction()) {
             replicateRollbackTransaction(context, xid);
         }
-    }
-
-    public void replicateSend(ProducerBrokerExchange producerExchange, Message messageSend) throws Exception {
-        final ConnectionContext connectionContext = producerExchange.getConnectionContext();
-        if (!needToReplicateSend(connectionContext, messageSend)) {
-            return;
-        }
-
-        TransactionId transactionId = null;
-        if (messageSend.getTransactionId() != null && !messageSend.getTransactionId().isXATransaction()) {
-            transactionId = messageSend.getTransactionId();
-        }
-
-        replicateSend(connectionContext, messageSend, transactionId);
     }
 
     @Override
