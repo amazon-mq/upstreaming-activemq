@@ -28,6 +28,8 @@ import org.apache.activemq.command.ActiveMQQueue;
 import org.apache.activemq.command.ActiveMQTopic;
 import org.apache.activemq.replica.ReplicaPlugin;
 import org.apache.activemq.replica.ReplicaRole;
+import org.apache.activemq.replica.jmx.ReplicationViewMBean;
+import org.apache.commons.io.FileUtils;
 
 import javax.jms.ConnectionFactory;
 import javax.management.MBeanServer;
@@ -37,6 +39,7 @@ import javax.management.ObjectName;
 import javax.transaction.xa.Xid;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
+import java.io.File;
 import java.io.IOException;
 
 public abstract class ReplicaPluginTestSupport extends AutoFailTestSupport {
@@ -197,7 +200,7 @@ public abstract class ReplicaPluginTestSupport extends AutoFailTestSupport {
         return MBeanServerInvocationHandler.newProxyInstance(mbeanServer, queueViewMBeanName, QueueViewMBean.class, true);
     }
 
-    protected TopicViewMBean getTopicsView(BrokerService broker, String topicName) throws MalformedObjectNameException {
+    protected TopicViewMBean getTopicView(BrokerService broker, String topicName) throws MalformedObjectNameException {
         MBeanServer mbeanServer = broker.getManagementContext().getMBeanServer();
         String objectNameStr = broker.getBrokerObjectName().toString();
         objectNameStr += ",destinationType=Topic,destinationName=" + topicName;
@@ -205,7 +208,15 @@ public abstract class ReplicaPluginTestSupport extends AutoFailTestSupport {
         return MBeanServerInvocationHandler.newProxyInstance(mbeanServer, topicViewMBeanName, TopicViewMBean.class, true);
     }
 
-    private ObjectName assertRegisteredObjectName(MBeanServer mbeanServer, String name) throws MalformedObjectNameException, NullPointerException {
+    protected ReplicationViewMBean getReplicationView(BrokerService broker) throws Exception {
+        MBeanServer mbeanServer = broker.getManagementContext().getMBeanServer();
+        String objectNameStr = broker.getBrokerObjectName().toString();
+        objectNameStr += ",service=Plugins,instanceName=ReplicationPlugin";
+        ObjectName replicaViewMBeanName = assertRegisteredObjectName(mbeanServer, objectNameStr);
+        return MBeanServerInvocationHandler.newProxyInstance(mbeanServer, replicaViewMBeanName, ReplicationViewMBean.class, true);
+    }
+
+    protected ObjectName assertRegisteredObjectName(MBeanServer mbeanServer, String name) throws MalformedObjectNameException, NullPointerException {
         ObjectName objectName = new ObjectName(name);
         if (mbeanServer.isRegistered(objectName)) {
             System.out.println("Bean Registered: " + objectName);
@@ -213,5 +224,12 @@ public abstract class ReplicaPluginTestSupport extends AutoFailTestSupport {
             fail("Could not find MBean!: " + objectName);
         }
         return objectName;
+    }
+
+    protected void cleanKahaDB(String filePath) throws IOException {
+        File kahaDBFile = new File(filePath);
+        if (kahaDBFile.exists()) {
+            FileUtils.cleanDirectory(kahaDBFile);
+        }
     }
 }
