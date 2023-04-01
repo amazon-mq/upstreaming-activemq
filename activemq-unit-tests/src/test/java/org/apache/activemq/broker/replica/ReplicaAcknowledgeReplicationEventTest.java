@@ -255,6 +255,7 @@ public class ReplicaAcknowledgeReplicationEventTest extends ReplicaPluginTestSup
         };
         replicaPlugin.setRole(ReplicaRole.replica);
         replicaPlugin.setOtherBrokerUri(firstReplicaBindAddress);
+        replicaPlugin.setControlWebConsoleAccess(false);
 
         answer.setPlugins(new BrokerPlugin[]{replicaPlugin});
         answer.setSchedulerSupport(true);

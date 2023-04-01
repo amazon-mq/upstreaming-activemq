@@ -35,10 +35,11 @@ public class ReplicaPluginInstallationTest {
 
     private final BrokerService brokerService = mock(BrokerService.class);
     private final Broker broker = mock(Broker.class);
-    ReplicaPlugin pluginUnderTest = new ReplicaPlugin();
+    private final ReplicaPlugin pluginUnderTest = new ReplicaPlugin();
 
     @Before
     public void setUp() {
+        pluginUnderTest.setControlWebConsoleAccess(false);
         when(broker.getBrokerService()).thenReturn(brokerService);
         when(brokerService.isUseJmx()).thenReturn(false);
         when(brokerService.getDestinationPolicy()).thenReturn(new PolicyMap());

@@ -35,12 +35,14 @@ public class ReplicaHardFailoverTest extends ReplicaPluginTestSupport {
         firstBrokerPlugin.setRole(ReplicaRole.source);
         firstBrokerPlugin.setTransportConnectorUri(firstReplicaBindAddress);
         firstBrokerPlugin.setOtherBrokerUri(SECOND_REPLICA_BINDING_ADDRESS);
+        firstBrokerPlugin.setControlWebConsoleAccess(false);
         firstBroker.setPlugins(new BrokerPlugin[]{firstBrokerPlugin});
 
         ReplicaPlugin secondBrokerPlugin = new ReplicaPlugin();
         secondBrokerPlugin.setRole(ReplicaRole.replica);
         secondBrokerPlugin.setTransportConnectorUri(SECOND_REPLICA_BINDING_ADDRESS);
         secondBrokerPlugin.setOtherBrokerUri(firstReplicaBindAddress);
+        secondBrokerPlugin.setControlWebConsoleAccess(false);
         secondBroker.setPlugins(new BrokerPlugin[]{secondBrokerPlugin});
 
         firstBroker.start();

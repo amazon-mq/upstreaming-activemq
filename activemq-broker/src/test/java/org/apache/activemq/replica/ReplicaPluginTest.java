@@ -24,6 +24,7 @@ import org.apache.activemq.broker.region.DestinationInterceptor;
 import org.apache.activemq.broker.region.RegionBroker;
 import org.apache.activemq.broker.region.policy.PolicyMap;
 import org.assertj.core.api.SoftAssertions;
+import org.junit.Before;
 import org.junit.Test;
 
 import java.net.URI;
@@ -37,6 +38,11 @@ import static org.mockito.Mockito.when;
 public class ReplicaPluginTest {
 
     private final ReplicaPlugin plugin = new ReplicaPlugin();
+
+    @Before
+    public void setUp() {
+        plugin.setControlWebConsoleAccess(false);
+    }
 
     @Test
     public void canSetRole() {

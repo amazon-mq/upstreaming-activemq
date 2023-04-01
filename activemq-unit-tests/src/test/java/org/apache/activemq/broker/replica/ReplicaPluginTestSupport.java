@@ -118,6 +118,7 @@ public abstract class ReplicaPluginTestSupport extends AutoFailTestSupport {
         ReplicaPlugin replicaPlugin = new ReplicaPlugin();
         replicaPlugin.setRole(ReplicaRole.source);
         replicaPlugin.setTransportConnectorUri(firstReplicaBindAddress);
+        replicaPlugin.setControlWebConsoleAccess(false);
 
         answer.setPlugins(new BrokerPlugin[]{replicaPlugin});
         answer.setSchedulerSupport(true);
@@ -136,6 +137,7 @@ public abstract class ReplicaPluginTestSupport extends AutoFailTestSupport {
         ReplicaPlugin replicaPlugin = new ReplicaPlugin();
         replicaPlugin.setRole(ReplicaRole.replica);
         replicaPlugin.setOtherBrokerUri(firstReplicaBindAddress);
+        replicaPlugin.setControlWebConsoleAccess(false);
 
         answer.setPlugins(new BrokerPlugin[]{replicaPlugin});
         answer.setSchedulerSupport(true);
