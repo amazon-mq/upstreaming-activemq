@@ -20,6 +20,7 @@ import org.apache.activemq.ScheduledMessage;
 import org.apache.activemq.broker.Broker;
 import org.apache.activemq.broker.ConnectionContext;
 import org.apache.activemq.broker.ConsumerBrokerExchange;
+import org.apache.activemq.broker.TransactionBroker;
 import org.apache.activemq.broker.region.Destination;
 import org.apache.activemq.broker.region.DurableTopicSubscription;
 import org.apache.activemq.broker.region.MessageReference;
@@ -39,12 +40,14 @@ import org.apache.activemq.command.RemoveSubscriptionInfo;
 import org.apache.activemq.command.TransactionId;
 import org.apache.activemq.replica.storage.ReplicaFailOverStateStorage;
 import org.apache.activemq.replica.storage.ReplicaSequenceStorage;
+import org.apache.activemq.transaction.Transaction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.jms.JMSException;
 import javax.jms.Message;
 import javax.jms.MessageListener;
+import javax.transaction.xa.XAException;
 import java.io.IOException;
 import java.math.BigInteger;
 import java.util.Arrays;
@@ -202,6 +205,11 @@ public class ReplicaBrokerEventListener implements MessageListener {
 
     private void processMessage(ActiveMQMessage message, ReplicaEventType eventType, Object deserializedData,
             TransactionId transactionId) throws Exception {
+        if (shouldIgnoreReplicationEvent(message, eventType, deserializedData, transactionId)) {
+            logger.trace("Skip processing event [{}] with messageId [{}]", eventType.name(), message.getMessageId());
+            return;
+        }
+
         switch (eventType) {
             case DESTINATION_UPSERT:
                 logger.trace("Processing replicated destination");
@@ -282,6 +290,63 @@ public class ReplicaBrokerEventListener implements MessageListener {
                         String.format("Unhandled event type \"%s\" for replication message id: %s",
                                 eventType, message.getJMSMessageID()));
         }
+    }
+
+    private boolean shouldIgnoreReplicationEvent(ActiveMQMessage message, ReplicaEventType eventType, Object deserializedData,
+                                                 TransactionId transactionId) throws Exception {
+        switch (eventType) {
+            case MESSAGE_ACK:
+                MessageAck messageAck = (MessageAck) deserializedData;
+                if (!isExistingDestination(messageAck.getDestination())) {
+                    logger.trace("Should ignore replication event [{}] - non-existing destination [{}]", eventType, messageAck.getDestination().getPhysicalName());
+                    return true;
+                }
+                break;
+
+            case TRANSACTION_ROLLBACK:
+            case TRANSACTION_COMMIT:
+            case TRANSACTION_FORGET:
+            case TRANSACTION_PREPARE:
+                TransactionId transId = (TransactionId) deserializedData;
+                if (transId.isXATransaction() && !isTransactionExisted(transId)) {
+                    logger.trace("Should ignore replication event [{}] - non-existing transaction [{}]", eventType, transId);
+                    return true;
+                }
+                break;
+        }
+
+        return false;
+    }
+
+    private boolean isExistingDestination(ActiveMQDestination destination) throws Exception {
+        try {
+            return Arrays.stream(broker.getDestinations())
+                    .anyMatch(d -> d.getQualifiedName().equals(destination.getQualifiedName()));
+        } catch (Exception e) {
+            logger.error("Unable to determine if [{}] is an existing destination", destination, e);
+            throw e;
+        }
+    }
+
+    private boolean isTransactionExisted(TransactionId transactionId) throws Exception {
+        TransactionBroker transactionBroker = (TransactionBroker) broker.getAdaptor(TransactionBroker.class);
+        try {
+            Transaction transaction = transactionBroker.getTransaction(connectionContext, transactionId, false);
+            return transaction != null;
+        }
+        catch (XAException e) {
+            logger.trace("Transaction cannot be found - non-existing transaction [{}]", transactionId, e);
+            return false;
+        }
+    }
+
+    private boolean isExceptionDueToNonExistingMessage(JMSException exception) {
+        if (exception.getMessage().contains("Slave broker out of sync with master - Message:")
+                && exception.getMessage().contains("does not exist among pending")) {
+            return true;
+        }
+
+        return false;
     }
 
     private void processBatch(ActiveMQMessage message, TransactionId tid) throws Exception {
@@ -488,8 +553,21 @@ public class ReplicaBrokerEventListener implements MessageListener {
                 broker.addConsumer(connectionContext, consumerInfo);
             }
 
+            boolean anyMessageAcked = false;
             for (String messageId : messageIdsToAck) {
-                messageDispatch(ack.getConsumerId(), destination, messageId);
+                try {
+                    messageDispatch(ack.getConsumerId(), destination, messageId);
+                    anyMessageAcked = true;
+                } catch (JMSException e) {
+                    if (isExceptionDueToNonExistingMessage(e)) {
+                        logger.trace("Skip MESSAGE_ACK processing event due to non-existing message. messageId [{}]", messageId);
+                        return;
+                    }
+                }
+            }
+
+            if (!anyMessageAcked) {
+                return;
             }
 
             ack.copy(messageAck);
