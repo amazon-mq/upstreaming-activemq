@@ -33,7 +33,6 @@ import org.mockito.ArgumentCaptor;
 
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -69,7 +68,7 @@ public class ReplicaCompactorTest {
         PrefetchSubscription originalSubscription = mock(PrefetchSubscription.class);
         when(originalSubscription.getConsumerInfo()).thenReturn(consumerInfo);
 
-        replicaCompactor = new ReplicaCompactor(broker, queueProvider, originalSubscription, 1000, new AtomicLong());
+        replicaCompactor = new ReplicaCompactor(broker, queueProvider, originalSubscription, 1000);
     }
 
     @Test

@@ -44,7 +44,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -56,17 +55,15 @@ public class ReplicaCompactor {
     private final ReplicaReplicationQueueSupplier queueProvider;
     private final PrefetchSubscription subscription;
     private final int additionalMessagesLimit;
-    private final AtomicLong tpsCounter;
 
     private final Queue intermediateQueue;
 
     public ReplicaCompactor(Broker broker, ReplicaReplicationQueueSupplier queueProvider, PrefetchSubscription subscription,
-            int additionalMessagesLimit, AtomicLong tpsCounter) {
+            int additionalMessagesLimit) {
         this.broker = broker;
         this.queueProvider = queueProvider;
         this.subscription = subscription;
         this.additionalMessagesLimit = additionalMessagesLimit;
-        this.tpsCounter = tpsCounter;
 
         intermediateQueue = broker.getDestinations(queueProvider.getIntermediateQueue()).stream().findFirst()
                 .map(DestinationExtractor::extractQueue).orElseThrow();
@@ -159,8 +156,6 @@ public class ReplicaCompactor {
 
         Set<MessageId> messageIds = toDelete.stream().map(dmid -> dmid.messageReference.getMessageId()).collect(Collectors.toSet());
         result.removeIf(reference -> messageIds.contains(reference.messageReference.getMessageId()));
-
-        tpsCounter.addAndGet(toDelete.size());
 
         return result;
     }

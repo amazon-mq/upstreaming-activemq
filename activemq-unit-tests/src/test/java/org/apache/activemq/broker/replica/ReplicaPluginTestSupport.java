@@ -52,6 +52,7 @@ public abstract class ReplicaPluginTestSupport extends AutoFailTestSupport {
 
     protected String firstBindAddress = "vm://firstBroker";
     protected String firstReplicaBindAddress = "tcp://localhost:61610";
+    protected String secondReplicaBindAddress = "tcp://localhost:61611";
     protected String secondBindAddress = "vm://secondBroker";
 
     protected BrokerService firstBroker;
@@ -118,6 +119,7 @@ public abstract class ReplicaPluginTestSupport extends AutoFailTestSupport {
         ReplicaPlugin replicaPlugin = new ReplicaPlugin();
         replicaPlugin.setRole(ReplicaRole.source);
         replicaPlugin.setTransportConnectorUri(firstReplicaBindAddress);
+        replicaPlugin.setOtherBrokerUri(secondReplicaBindAddress);
         replicaPlugin.setControlWebConsoleAccess(false);
 
         answer.setPlugins(new BrokerPlugin[]{replicaPlugin});
@@ -136,6 +138,7 @@ public abstract class ReplicaPluginTestSupport extends AutoFailTestSupport {
 
         ReplicaPlugin replicaPlugin = new ReplicaPlugin();
         replicaPlugin.setRole(ReplicaRole.replica);
+        replicaPlugin.setTransportConnectorUri(secondReplicaBindAddress);
         replicaPlugin.setOtherBrokerUri(firstReplicaBindAddress);
         replicaPlugin.setControlWebConsoleAccess(false);
 

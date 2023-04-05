@@ -31,13 +31,11 @@ import org.apache.activemq.command.ConsumerId;
 import org.apache.activemq.command.ConsumerInfo;
 import org.apache.activemq.command.DataStructure;
 import org.apache.activemq.command.LocalTransactionId;
-import org.apache.activemq.command.Message;
 import org.apache.activemq.command.MessageAck;
 import org.apache.activemq.command.MessageDispatch;
 import org.apache.activemq.command.MessageId;
 import org.apache.activemq.command.SessionId;
 import org.apache.activemq.command.TransactionId;
-import org.apache.activemq.replica.jmx.ReplicationView;
 import org.apache.activemq.replica.storage.ReplicaRecoverySequenceStorage;
 import org.apache.activemq.replica.storage.ReplicaSequenceStorage;
 import org.apache.activemq.thread.TaskRunner;
@@ -107,9 +105,6 @@ public class ReplicaSequencer {
 
     private final AtomicBoolean initialized = new AtomicBoolean();
 
-    private final AtomicLong tpsCounter = new AtomicLong();
-    private long lastTpsCounter;
-
     public ReplicaSequencer(Broker broker, ReplicaReplicationQueueSupplier queueProvider,
                             ReplicaInternalMessageProducer replicaInternalMessageProducer,
                             ReplicationMessageProducer replicationMessageProducer,
@@ -121,10 +116,13 @@ public class ReplicaSequencer {
         this.replicaAckHelper = new ReplicaAckHelper(broker);
         this.replicaPolicy = replicaPolicy;
         this.replicaBatcher = new ReplicaBatcher(replicaPolicy);
-        scheduleExecutor();
     }
 
     void initialize() throws Exception {
+        if (initialized.get()) {
+            return;
+        }
+
         BrokerService brokerService = broker.getBrokerService();
         TaskRunnerFactory taskRunnerFactory = brokerService.getTaskRunnerFactory();
         ackTaskRunner = taskRunnerFactory.createTaskRunner(this::iterateAck, "ReplicationPlugin.Sequencer.Ack");
@@ -157,12 +155,16 @@ public class ReplicaSequencer {
         subscription = (PrefetchSubscription) broker.addConsumer(subscriptionConnectionContext, consumerInfo);
 
         replicaCompactor = new ReplicaCompactor(broker, queueProvider, subscription,
-                replicaPolicy.getCompactorAdditionalMessagesLimit(), tpsCounter);
+                replicaPolicy.getCompactorAdditionalMessagesLimit());
 
         intermediateQueue.iterate();
         String savedSequences = sequenceStorage.initialize(subscriptionConnectionContext);
         List<String> savedSequencesToRestore = restoreSequenceStorage.initialize(subscriptionConnectionContext);
         restoreSequence(savedSequences, savedSequencesToRestore);
+
+        scheduler = Executors.newSingleThreadScheduledExecutor();
+        scheduler.scheduleAtFixedRate(this::asyncSendWakeup,
+                replicaPolicy.getSourceSendPeriod(), replicaPolicy.getSourceSendPeriod(), TimeUnit.MILLISECONDS);
 
         initialized.compareAndSet(false, true);
         asyncSendWakeup();
@@ -201,29 +203,12 @@ public class ReplicaSequencer {
             restoreSequenceStorage.deinitialize(subscriptionConnectionContext);
         }
 
+        if (scheduler != null) {
+            scheduler.shutdownNow();
+        }
+
         initialized.compareAndSet(true, false);
 
-    }
-
-    void scheduleExecutor() {
-        scheduler = Executors.newSingleThreadScheduledExecutor();
-        scheduler.scheduleAtFixedRate(this::asyncSendWakeup,
-                replicaPolicy.getSourceSendPeriod(), replicaPolicy.getSourceSendPeriod(), TimeUnit.MILLISECONDS);
-    }
-
-    void terminateScheduledExecutor() {
-        scheduler.shutdownNow();
-    }
-
-    void initializeJmx(ReplicationView replicationView) {
-        if (replicationView == null) {
-            return;
-        }
-        Executors.newSingleThreadScheduledExecutor().scheduleAtFixedRate(() -> {
-            long c = tpsCounter.get();
-            replicationView.setReplicationTps((c - lastTpsCounter) / 10);
-            lastTpsCounter = c;
-        }, 10, 10, TimeUnit.SECONDS);
     }
 
     void restoreSequence(String savedSequence, List<String> savedSequencesToRestore) throws Exception {
@@ -445,8 +430,6 @@ public class ReplicaSequencer {
                 restoreSequenceStorage.acknowledge(connectionContext, transactionId, sequenceMessages);
 
                 broker.commitTransaction(connectionContext, transactionId, true);
-
-                tpsCounter.addAndGet(messages.size());
 
                 synchronized (messageToAck) {
                     messageToAck.removeAll(messages);
