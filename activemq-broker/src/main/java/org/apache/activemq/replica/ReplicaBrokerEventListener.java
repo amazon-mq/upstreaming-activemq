@@ -50,6 +50,7 @@ import javax.jms.MessageListener;
 import javax.transaction.xa.XAException;
 import java.io.IOException;
 import java.math.BigInteger;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
@@ -75,6 +76,7 @@ public class ReplicaBrokerEventListener implements MessageListener {
     private final AtomicReference<ReplicaEventRetrier> replicaEventRetrier = new AtomicReference<>();
     final ReplicaSequenceStorage sequenceStorage;
     private final ActionListenerCallback actionListenerCallback;
+    private final TransactionBroker transactionBroker;
 
     BigInteger sequence;
     MessageId sequenceMessageId;
@@ -96,6 +98,7 @@ public class ReplicaBrokerEventListener implements MessageListener {
 
         this.sequenceStorage = new ReplicaSequenceStorage(broker,
                 queueProvider, replicaInternalMessageProducer, SEQUENCE_NAME);
+        this.transactionBroker = (TransactionBroker) broker.getAdaptor(TransactionBroker.class);
     }
 
     public void initialize() throws Exception {
@@ -205,11 +208,6 @@ public class ReplicaBrokerEventListener implements MessageListener {
 
     private void processMessage(ActiveMQMessage message, ReplicaEventType eventType, Object deserializedData,
             TransactionId transactionId) throws Exception {
-        if (shouldIgnoreReplicationEvent(message, eventType, deserializedData, transactionId)) {
-            logger.trace("Skip processing event [{}] with messageId [{}]", eventType.name(), message.getMessageId());
-            return;
-        }
-
         switch (eventType) {
             case DESTINATION_UPSERT:
                 logger.trace("Processing replicated destination");
@@ -292,33 +290,7 @@ public class ReplicaBrokerEventListener implements MessageListener {
         }
     }
 
-    private boolean shouldIgnoreReplicationEvent(ActiveMQMessage message, ReplicaEventType eventType, Object deserializedData,
-                                                 TransactionId transactionId) throws Exception {
-        switch (eventType) {
-            case MESSAGE_ACK:
-                MessageAck messageAck = (MessageAck) deserializedData;
-                if (!isExistingDestination(messageAck.getDestination())) {
-                    logger.trace("Should ignore replication event [{}] - non-existing destination [{}]", eventType, messageAck.getDestination().getPhysicalName());
-                    return true;
-                }
-                break;
-
-            case TRANSACTION_ROLLBACK:
-            case TRANSACTION_COMMIT:
-            case TRANSACTION_FORGET:
-            case TRANSACTION_PREPARE:
-                TransactionId transId = (TransactionId) deserializedData;
-                if (transId.isXATransaction() && !isTransactionExisted(transId)) {
-                    logger.trace("Should ignore replication event [{}] - non-existing transaction [{}]", eventType, transId);
-                    return true;
-                }
-                break;
-        }
-
-        return false;
-    }
-
-    private boolean isExistingDestination(ActiveMQDestination destination) throws Exception {
+    private boolean isDestinationExisted(ActiveMQDestination destination) throws Exception {
         try {
             return Arrays.stream(broker.getDestinations())
                     .anyMatch(d -> d.getQualifiedName().equals(destination.getQualifiedName()));
@@ -329,13 +301,12 @@ public class ReplicaBrokerEventListener implements MessageListener {
     }
 
     private boolean isTransactionExisted(TransactionId transactionId) throws Exception {
-        TransactionBroker transactionBroker = (TransactionBroker) broker.getAdaptor(TransactionBroker.class);
         try {
             Transaction transaction = transactionBroker.getTransaction(connectionContext, transactionId, false);
             return transaction != null;
         }
         catch (XAException e) {
-            logger.trace("Transaction cannot be found - non-existing transaction [{}]", transactionId, e);
+            logger.error("Transaction cannot be found - non-existing transaction [{}]", transactionId, e);
             return false;
         }
     }
@@ -357,16 +328,9 @@ public class ReplicaBrokerEventListener implements MessageListener {
     }
 
     private void upsertDestination(ActiveMQDestination destination) throws Exception {
-        try {
-            boolean isExistingDestination = Arrays.stream(broker.getDestinations())
-                    .anyMatch(d -> d.getQualifiedName().equals(destination.getQualifiedName()));
-            if (isExistingDestination) {
-                logger.debug("Destination [{}] already exists, no action to take", destination);
-                return;
-            }
-        } catch (Exception e) {
-            logger.error("Unable to determine if [{}] is an existing destination", destination, e);
-            throw e;
+        if (isDestinationExisted(destination)) {
+            logger.debug("Destination [{}] already exists, no action to take", destination);
+            return;
         }
         try {
             broker.addDestination(connectionContext, destination, true);
@@ -377,16 +341,9 @@ public class ReplicaBrokerEventListener implements MessageListener {
     }
 
     private void deleteDestination(ActiveMQDestination destination) throws Exception {
-        try {
-            boolean isNonExtantDestination = Arrays.stream(broker.getDestinations())
-                    .noneMatch(d -> d.getQualifiedName().equals(destination.getQualifiedName()));
-            if (isNonExtantDestination) {
-                logger.debug("Destination [{}] does not exist, no action to take", destination);
-                return;
-            }
-        } catch (Exception e) {
-            logger.error("Unable to determine if [{}] is an existing destination", destination, e);
-            throw e;
+        if (!isDestinationExisted(destination)) {
+            logger.debug("Destination [{}] does not exist, no action to take", destination);
+            return;
         }
         try {
             broker.removeDestination(connectionContext, destination, 1000);
@@ -453,6 +410,10 @@ public class ReplicaBrokerEventListener implements MessageListener {
 
     private void prepareTransaction(TransactionId xid) throws Exception {
         try {
+            if (xid.isXATransaction() && !isTransactionExisted(xid)) {
+                logger.warn("Skip processing transaction event - non-existing XA transaction [{}]", xid);
+                return;
+            }
             createTransactionMapIfNotExist();
             broker.prepareTransaction(connectionContext, xid);
         } catch (Exception e) {
@@ -463,6 +424,10 @@ public class ReplicaBrokerEventListener implements MessageListener {
 
     private void forgetTransaction(TransactionId xid) throws Exception {
         try {
+            if (xid.isXATransaction() && !isTransactionExisted(xid)) {
+                logger.warn("Skip processing transaction event - non-existing XA transaction [{}]", xid);
+                return;
+            }
             createTransactionMapIfNotExist();
             broker.forgetTransaction(connectionContext, xid);
         } catch (Exception e) {
@@ -473,6 +438,10 @@ public class ReplicaBrokerEventListener implements MessageListener {
 
     private void rollbackTransaction(TransactionId xid) throws Exception {
         try {
+            if (xid.isXATransaction() && !isTransactionExisted(xid)) {
+                logger.warn("Skip processing transaction event - non-existing XA transaction [{}]", xid);
+                return;
+            }
             createTransactionMapIfNotExist();
             broker.rollbackTransaction(connectionContext, xid);
         } catch (Exception e) {
@@ -483,6 +452,10 @@ public class ReplicaBrokerEventListener implements MessageListener {
 
     private void commitTransaction(TransactionId xid, boolean onePhase) throws Exception {
         try {
+            if (xid.isXATransaction() && !isTransactionExisted(xid)) {
+                logger.warn("Skip processing transaction event - non-existing XA transaction [{}]", xid);
+                return;
+            }
             broker.commitTransaction(connectionContext, xid, onePhase);
         } catch (Exception e) {
             logger.error("Unable to replicate commit transaction [{}]", xid, e);
@@ -543,7 +516,10 @@ public class ReplicaBrokerEventListener implements MessageListener {
         ActiveMQDestination destination = ack.getDestination();
         MessageAck messageAck = new MessageAck();
         try {
-
+            if (!isDestinationExisted(destination)) {
+                logger.warn("Skip MESSAGE_ACK processing event due to non-existing destination [{}]", destination.getPhysicalName());
+                return;
+            }
             ConsumerInfo consumerInfo = null;
             if (destination.isQueue()) {
                 consumerInfo = new ConsumerInfo();
@@ -553,28 +529,29 @@ public class ReplicaBrokerEventListener implements MessageListener {
                 broker.addConsumer(connectionContext, consumerInfo);
             }
 
-            boolean anyMessageAcked = false;
+            List<String> existingMessageIdsToAck = new ArrayList();
             for (String messageId : messageIdsToAck) {
                 try {
                     messageDispatch(ack.getConsumerId(), destination, messageId);
-                    anyMessageAcked = true;
+                    existingMessageIdsToAck.add(messageId);
                 } catch (JMSException e) {
                     if (isExceptionDueToNonExistingMessage(e)) {
-                        logger.trace("Skip MESSAGE_ACK processing event due to non-existing message. messageId [{}]", messageId);
-                        return;
+                        logger.warn("Skip MESSAGE_ACK processing event due to non-existing message [{}]", messageId);
+                    } else {
+                        throw e;
                     }
                 }
             }
 
-            if (!anyMessageAcked) {
+            if (existingMessageIdsToAck.size() == 0) {
                 return;
             }
 
             ack.copy(messageAck);
 
-            messageAck.setMessageCount(messageIdsToAck.size());
-            messageAck.setFirstMessageId(new MessageId(messageIdsToAck.get(0)));
-            messageAck.setLastMessageId(new MessageId(messageIdsToAck.get(messageIdsToAck.size() - 1)));
+            messageAck.setMessageCount(existingMessageIdsToAck.size());
+            messageAck.setFirstMessageId(new MessageId(existingMessageIdsToAck.get(0)));
+            messageAck.setLastMessageId(new MessageId(existingMessageIdsToAck.get(existingMessageIdsToAck.size() - 1)));
 
             if (messageAck.getTransactionId() == null || !messageAck.getTransactionId().isXATransaction()) {
                 messageAck.setTransactionId(transactionId);
