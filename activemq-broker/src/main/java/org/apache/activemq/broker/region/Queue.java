@@ -2508,7 +2508,7 @@ public class Queue extends BaseDestination implements Task, UsageListener, Index
 
         Set<MessageReference> set = new LinkedHashSet<MessageReference>();
         do {
-            doPageIn(true);
+            doPageIn(true, false, getMaxPageSize());
             pagedInMessagesLock.readLock().lock();
             try {
                 if (!set.addAll(pagedInMessages.values())) {
