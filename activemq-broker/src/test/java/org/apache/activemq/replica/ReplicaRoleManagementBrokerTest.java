@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Set;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -138,6 +139,58 @@ public class ReplicaRoleManagementBrokerTest {
         replicaRoleManagementBroker.switchRole(ReplicaRole.replica, false);
 
         verify(sourceBroker).stopBeforeRoleChange(false);
+    }
+
+    @Test
+    public void doNotInvokeSwitchToReplicaWhenAwaitAck() throws Exception {
+        ActiveMQTextMessage message = new ActiveMQTextMessage();
+        message.setText(ReplicaRole.await_ack.name());
+        when(subscription.getDispatched()).thenReturn(List.of(message));
+
+        replicaRoleManagementBroker.start();
+
+        replicaRoleManagementBroker.switchRole(ReplicaRole.replica, false);
+
+        verify(sourceBroker, never()).stopBeforeRoleChange(anyBoolean());
+    }
+
+    @Test
+    public void doNotInvokeSwitchToReplicaWhenAckProcessed() throws Exception {
+        ActiveMQTextMessage message = new ActiveMQTextMessage();
+        message.setText(ReplicaRole.ack_processed.name());
+        when(subscription.getDispatched()).thenReturn(List.of(message));
+
+        replicaRoleManagementBroker.start();
+
+        replicaRoleManagementBroker.switchRole(ReplicaRole.source, false);
+
+        verify(replicaBroker, never()).stopBeforeRoleChange(anyBoolean());
+    }
+
+    @Test
+    public void invokeSwitchToReplicaWhenAwaitAckAndForce() throws Exception {
+        ActiveMQTextMessage message = new ActiveMQTextMessage();
+        message.setText(ReplicaRole.await_ack.name());
+        when(subscription.getDispatched()).thenReturn(List.of(message));
+
+        replicaRoleManagementBroker.start();
+
+        replicaRoleManagementBroker.switchRole(ReplicaRole.replica, true);
+
+        verify(sourceBroker).stopBeforeRoleChange(true);
+    }
+
+    @Test
+    public void invokeSwitchToReplicaWhenAckProcessedAndForce() throws Exception {
+        ActiveMQTextMessage message = new ActiveMQTextMessage();
+        message.setText(ReplicaRole.ack_processed.name());
+        when(subscription.getDispatched()).thenReturn(List.of(message));
+
+        replicaRoleManagementBroker.start();
+
+        replicaRoleManagementBroker.switchRole(ReplicaRole.source, true);
+
+        verify(replicaBroker).stopBeforeRoleChange(true);
     }
 
     @Test
