@@ -16,10 +16,9 @@
  */
 package org.apache.activemq.broker.scheduler;
 
+import javax.jms.MessageFormatException;
 import java.io.IOException;
 import java.util.concurrent.atomic.AtomicBoolean;
-
-import javax.jms.MessageFormatException;
 
 import org.apache.activemq.ScheduledMessage;
 import org.apache.activemq.advisory.AdvisorySupport;
