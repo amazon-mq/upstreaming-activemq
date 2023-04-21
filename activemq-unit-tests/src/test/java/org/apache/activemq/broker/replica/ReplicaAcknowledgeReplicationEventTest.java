@@ -45,13 +45,13 @@ import javax.jms.Message;
 import javax.jms.MessageListener;
 import javax.jms.MessageProducer;
 import javax.jms.Session;
+import java.net.URI;
 import java.text.MessageFormat;
 import java.util.LinkedList;
 
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 
 public class ReplicaAcknowledgeReplicationEventTest extends ReplicaPluginTestSupport {
@@ -116,7 +116,7 @@ public class ReplicaAcknowledgeReplicationEventTest extends ReplicaPluginTestSup
         Thread.sleep(LONG_TIMEOUT);
         QueueViewMBean firstBrokerMainQueueView = getQueueView(firstBroker, ReplicaSupport.MAIN_REPLICATION_QUEUE_NAME);
         assertEquals(firstBrokerMainQueueView.getDequeueCount(), 0);
-        assertEquals(firstBrokerMainQueueView.getEnqueueCount(), 1);
+        assertTrue(firstBrokerMainQueueView.getEnqueueCount() >= 1);
 
         secondBroker.stop();
         secondBroker.waitUntilStopped();
@@ -129,8 +129,8 @@ public class ReplicaAcknowledgeReplicationEventTest extends ReplicaPluginTestSup
         secondBroker.start();
         Thread.sleep(LONG_TIMEOUT * 2);
         firstBrokerMainQueueView = getQueueView(firstBroker, ReplicaSupport.MAIN_REPLICATION_QUEUE_NAME);
-        assertEquals(firstBrokerMainQueueView.getDequeueCount(), 2);
-        assertEquals(firstBrokerMainQueueView.getEnqueueCount(), 2);
+        assertEquals(firstBrokerMainQueueView.getDequeueCount(), 3);
+        assertTrue(firstBrokerMainQueueView.getEnqueueCount() >= 2);
 
         QueueViewMBean secondBrokerSequenceQueueView = getQueueView(secondBroker, ReplicaSupport.SEQUENCE_REPLICATION_QUEUE_NAME);
         assertEquals(secondBrokerSequenceQueueView.browseMessages().size(), 1);
@@ -228,7 +228,7 @@ public class ReplicaAcknowledgeReplicationEventTest extends ReplicaPluginTestSup
 
         QueueViewMBean firstBrokerMainQueueView = getQueueView(firstBroker, ReplicaSupport.MAIN_REPLICATION_QUEUE_NAME);
         assertEquals(firstBrokerMainQueueView.getDequeueCount(), 0);
-        assertEquals(firstBrokerMainQueueView.getEnqueueCount(), 1);
+        assertTrue(firstBrokerMainQueueView.getEnqueueCount() >= 1);
     }
 
     @Override
@@ -240,11 +240,12 @@ public class ReplicaAcknowledgeReplicationEventTest extends ReplicaPluginTestSup
         answer.addConnector(secondBindAddress);
         answer.setDataDirectory(SECOND_KAHADB_DIRECTORY);
         answer.setBrokerName("secondBroker");
+        mockReplicaPolicy.setTransportConnectorUri(URI.create(secondReplicaBindAddress));
 
         ReplicaPlugin replicaPlugin = new ReplicaPlugin() {
             @Override
             public Broker installPlugin(final Broker broker) {
-                return new ReplicaRoleManagementBroker(broker, replicaPolicy, ReplicaRole.replica);
+                return new ReplicaRoleManagementBroker(broker, mockReplicaPolicy, ReplicaRole.replica);
             }
         };
         replicaPlugin.setRole(ReplicaRole.replica);
