@@ -106,9 +106,8 @@ public class ReplicaSequencer {
     private final AtomicBoolean initialized = new AtomicBoolean();
 
     public ReplicaSequencer(Broker broker, ReplicaReplicationQueueSupplier queueProvider,
-                            ReplicaInternalMessageProducer replicaInternalMessageProducer,
-                            ReplicationMessageProducer replicationMessageProducer,
-                            ReplicaPolicy replicaPolicy) {
+            ReplicaInternalMessageProducer replicaInternalMessageProducer,
+            ReplicationMessageProducer replicationMessageProducer, ReplicaPolicy replicaPolicy) {
         this.broker = broker;
         this.queueProvider = queueProvider;
         this.replicaInternalMessageProducer = replicaInternalMessageProducer;
