@@ -10,6 +10,7 @@
 name: run Tests on ActiveMQ CRDR
 
 on:
+  workflow_dispatch:
   pull_request:
     branches:
       - activemq-5.17.3.crdr
@@ -45,6 +46,7 @@ jobs:
 
   full_test_suite:
     runs-on: ubuntu-latest
+    timeout-minutes: 1020
 
     steps:
       - uses: actions/checkout@v3
