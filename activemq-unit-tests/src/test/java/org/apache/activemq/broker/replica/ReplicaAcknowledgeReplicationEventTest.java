@@ -35,6 +35,7 @@ import org.apache.activemq.replica.ReplicaPolicy;
 import org.apache.activemq.replica.ReplicaRole;
 import org.apache.activemq.replica.ReplicaRoleManagementBroker;
 import org.apache.activemq.replica.ReplicaSupport;
+import org.apache.activemq.util.Wait;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -128,6 +129,8 @@ public class ReplicaAcknowledgeReplicationEventTest extends ReplicaPluginTestSup
 
         secondBroker = super.createSecondBroker();
         secondBroker.start();
+        secondBroker.waitUntilStarted();
+        waitUntilReplicationQueueHasConsumer(firstBroker);
         Thread.sleep(LONG_TIMEOUT * 2);
         firstBrokerMainQueueView = getQueueView(firstBroker, ReplicaSupport.MAIN_REPLICATION_QUEUE_NAME);
         assertEquals(firstBrokerMainQueueView.getDequeueCount(), 3);
@@ -257,5 +260,22 @@ public class ReplicaAcknowledgeReplicationEventTest extends ReplicaPluginTestSup
         answer.setPlugins(new BrokerPlugin[]{replicaPlugin});
         answer.setSchedulerSupport(true);
         return answer;
+    }
+
+
+    private void waitUntilReplicationQueueHasConsumer(BrokerService broker) throws Exception {
+        assertTrue("Replication Main Queue has Consumer",
+                Wait.waitFor(new Wait.Condition() {
+                    @Override
+                    public boolean isSatisified() throws Exception {
+                        try {
+                            QueueViewMBean brokerMainQueueView = getQueueView(broker, ReplicaSupport.MAIN_REPLICATION_QUEUE_NAME);
+                            return brokerMainQueueView.getConsumerCount() > 0;
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                            return false;
+                        }
+                    }
+                }, Wait.MAX_WAIT_MILLIS*2));
     }
 }
