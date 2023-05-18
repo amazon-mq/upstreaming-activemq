@@ -240,9 +240,9 @@ public class JournalCorruptionEofIndexRecoveryTest {
         final var appender = new AbstractAppender("testAppender", new AbstractFilter() {}, new MessageLayout(), false, new Property[0]) {
             @Override
             public void append(LogEvent event) {
-                /**
+                /** 
                  * NOTE: As of JDK v11.0.19 RandomAccessFile throws a messageless EOFException when read fails
-                 *
+                 * 
                  *                 throw new EOFException();
                  */
                 if (event != null
