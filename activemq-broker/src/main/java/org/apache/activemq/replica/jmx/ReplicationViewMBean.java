@@ -21,7 +21,7 @@ import org.apache.activemq.broker.jmx.MBeanInfo;
 public interface ReplicationViewMBean {
 
     @MBeanInfo("Replication TPS")
-    long getReplicationTps();
+    Long getReplicationTps();
 
     @MBeanInfo("Set replication role for broker")
     void setReplicationRole(String role, boolean force) throws Exception;
@@ -29,4 +29,15 @@ public interface ReplicationViewMBean {
     @MBeanInfo("Get current replication role for broker")
     String getReplicationRole();
 
+    @MBeanInfo("Total replication lag")
+    Long getTotalReplicationLag();
+
+    @MBeanInfo("Get wait time(if the broker's role is source)")
+    Long getSourceWaitTime();
+
+    @MBeanInfo("Get replication lag")
+    Long getReplicationLag();
+
+    @MBeanInfo("Get wait time(if the broker's role is replica)")
+    Long getReplicaWaitTime();
 }
