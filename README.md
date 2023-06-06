@@ -1,3 +1,5 @@
+Writing a comment for replication plugin
+
 Welcome to Apache ActiveMQ 
 =======================================================================
 Apache ActiveMQ is a high performance Apache 2.0 licensed
