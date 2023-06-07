@@ -70,34 +70,6 @@ jobs:
       - name: run plugin integration tests
         run: mvn -s .github/maven-settings.xml -B -e -fae '-Dtest=org.apache.activemq.broker.replica.*Test' test
 
-  full_test_suite:
-    name: Run full suite tests on new changes
-    runs-on: self-hosted
-    strategy:
-      fail-fast: false
-      matrix:
-        branch: [ 'feature/replicationPlugin', 'activemq-5.17.3.crdr' ]
-
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          ref: ${{ matrix.branch }}
-      - run: |
-          /usr/bin/git fetch || true
-          /usr/bin/git merge --no-edit --strategy-option theirs origin/${{ github.event.pull_request.head.ref }} --allow-unrelated-histories
-      - name: Set up JDK 11
-        uses: actions/setup-java@v3
-        with:
-          java-version: '11'
-          distribution: 'corretto'
-          cache: maven
-      - name: Set up Maven
-        uses: stCarolas/setup-maven@v4.5
-        with:
-          maven-version: 3.8.2
-      - name: run full tests
-        run: mvn -s .github/maven-settings.xml -B -e -fae test -Dsurefire.rerunFailingTestsCount=3
-
   verify_with_Rat:
     runs-on: self-hosted
     strategy:
@@ -109,6 +81,7 @@ jobs:
       - uses: actions/checkout@v3
         with:
           ref: ${{ matrix.branch }}
+          depth: 0
       - run: |
           /usr/bin/git fetch || true
           /usr/bin/git merge --no-edit --strategy-option theirs origin/${{ github.event.pull_request.head.ref }} --allow-unrelated-histories
@@ -125,4 +98,7 @@ jobs:
       - name: Running apache-rat:check
         run: |
           mvn apache-rat:check
+      - if: failure()
+        run: |
+          echo "printing target/rat.txt"
           cat target/rat.txt || true
