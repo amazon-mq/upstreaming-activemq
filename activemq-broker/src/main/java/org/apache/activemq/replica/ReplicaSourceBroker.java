@@ -45,6 +45,10 @@ import java.io.IOException;
 import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
@@ -55,6 +59,7 @@ public class ReplicaSourceBroker extends MutativeRoleBroker {
     }; // used in destination map to indicate mirrored status
 
     private static final Logger logger = LoggerFactory.getLogger(ReplicaSourceBroker.class);
+    private final ScheduledExecutorService heartBeatPoller = Executors.newSingleThreadScheduledExecutor();
     private final ReplicaEventSerializer eventSerializer = new ReplicaEventSerializer();
     private final AtomicBoolean initialized = new AtomicBoolean();
 
@@ -63,6 +68,7 @@ public class ReplicaSourceBroker extends MutativeRoleBroker {
     private final ReplicaReplicationQueueSupplier queueProvider;
     private final ReplicaPolicy replicaPolicy;
     private final ReplicaAckHelper replicaAckHelper;
+    private ScheduledFuture<?> heartBeatScheduledFuture;
 
     final DestinationMap destinationsToReplicate = new DestinationMap();
 
@@ -79,11 +85,12 @@ public class ReplicaSourceBroker extends MutativeRoleBroker {
 
     @Override
     public void start(ReplicaRole role) throws Exception {
-        logger.info("Starting Source broker");
+        logger.info("Starting Source broker. " + (role == ReplicaRole.await_ack ? " Awaiting ack." : ""));
 
         initQueueProvider();
         initialized.compareAndSet(false, true);
         replicaSequencer.initialize();
+        initializeHeartBeatSender();
         ensureDestinationsAreReplicated();
     }
 
@@ -120,7 +127,25 @@ public class ReplicaSourceBroker extends MutativeRoleBroker {
         initQueueProvider();
         initialized.compareAndSet(false, true);
         replicaSequencer.initialize();
+        initializeHeartBeatSender();
         replicaSequencer.updateMainQueueConsumerStatus();
+    }
+
+    private void initializeHeartBeatSender() {
+        if (replicaPolicy.getHeartBeatPeriod() > 0) {
+            heartBeatScheduledFuture = heartBeatPoller.scheduleAtFixedRate(() -> {
+                try {
+                    enqueueReplicaEvent(
+                            getAdminConnectionContext(),
+                            new ReplicaEvent()
+                                    .setEventType(ReplicaEventType.HEART_BEAT)
+                                    .setEventData(eventSerializer.serializeReplicationData(null))
+                    );
+                } catch (Exception e) {
+                    logger.error("Failed to send heart beat message", e);
+                }
+            }, replicaPolicy.getHeartBeatPeriod(), replicaPolicy.getHeartBeatPeriod(), TimeUnit.MILLISECONDS);
+        }
     }
 
 
@@ -131,6 +156,9 @@ public class ReplicaSourceBroker extends MutativeRoleBroker {
 
     private void completeBeforeRoleChange() throws Exception {
         replicaSequencer.deinitialize();
+        if (heartBeatScheduledFuture != null) {
+            heartBeatScheduledFuture.cancel(true);
+        }
         removeReplicationQueues();
 
         onStopSuccess();
@@ -141,15 +169,15 @@ public class ReplicaSourceBroker extends MutativeRoleBroker {
         queueProvider.initializeSequenceQueue();
     }
 
-    private void ensureDestinationsAreReplicated() {
-        for (ActiveMQDestination d : getDurableDestinations()) { // TODO: support non-durable?
-            if (shouldReplicateDestination(d)) { // TODO: specific queues?
+    private void ensureDestinationsAreReplicated() throws Exception {
+        for (ActiveMQDestination d : getDurableDestinations()) {
+            if (shouldReplicateDestination(d)) {
                 replicateDestinationCreation(getAdminConnectionContext(), d);
             }
         }
     }
 
-    private void replicateDestinationCreation(ConnectionContext context, ActiveMQDestination destination) {
+    private void replicateDestinationCreation(ConnectionContext context, ActiveMQDestination destination) throws Exception {
         if (destinationsToReplicate.chooseValue(destination) != null) {
             return;
         }
@@ -164,6 +192,7 @@ public class ReplicaSourceBroker extends MutativeRoleBroker {
             destinationsToReplicate.put(destination, IS_REPLICATED);
         } catch (Exception e) {
             logger.error("Failed to replicate creation of destination {}", destination.getPhysicalName(), e);
+            throw e;
         }
     }
 
@@ -188,7 +217,7 @@ public class ReplicaSourceBroker extends MutativeRoleBroker {
         return true;
     }
 
-    public void replicateSend(ConnectionContext context, Message message, TransactionId transactionId) {
+    public void replicateSend(ConnectionContext context, Message message, TransactionId transactionId) throws Exception {
         try {
             TransactionId originalTransactionId = message.getTransactionId();
             enqueueReplicaEvent(
@@ -207,6 +236,7 @@ public class ReplicaSourceBroker extends MutativeRoleBroker {
             );
         } catch (Exception e) {
             logger.error("Failed to replicate message {} for destination {}", message.getMessageId(), message.getDestination().getPhysicalName(), e);
+            throw e;
         }
     }
 
@@ -220,7 +250,7 @@ public class ReplicaSourceBroker extends MutativeRoleBroker {
         if (message.getDestination().isTemporary()) {
             return false;
         }
-        if (message.isAdvisory()) {  // TODO: only replicate what we care about
+        if (message.isAdvisory()) {
             return false;
         }
         if (!message.isPersistent()) {
@@ -230,17 +260,7 @@ public class ReplicaSourceBroker extends MutativeRoleBroker {
         return true;
     }
 
-    private boolean isScheduled(Message message) throws IOException {
-        return hasProperty(message, ScheduledMessage.AMQ_SCHEDULED_DELAY)
-                || hasProperty(message, ScheduledMessage.AMQ_SCHEDULED_CRON)
-                || hasProperty(message, ScheduledMessage.AMQ_SCHEDULED_PERIOD);
-    }
-
-    private boolean hasProperty(Message message, String property) throws IOException {
-        return message.getProperty(property) != null;
-    }
-
-    private void replicateBeginTransaction(ConnectionContext context, TransactionId xid) {
+    private void replicateBeginTransaction(ConnectionContext context, TransactionId xid) throws Exception {
         try {
             enqueueReplicaEvent(
                     context,
@@ -250,10 +270,11 @@ public class ReplicaSourceBroker extends MutativeRoleBroker {
             );
         } catch (Exception e) {
             logger.error("Failed to replicate begin of transaction [{}]", xid);
+            throw e;
         }
     }
 
-    private void replicatePrepareTransaction(ConnectionContext context, TransactionId xid) {
+    private void replicatePrepareTransaction(ConnectionContext context, TransactionId xid) throws Exception {
         try {
             enqueueReplicaEvent(
                     context,
@@ -263,10 +284,11 @@ public class ReplicaSourceBroker extends MutativeRoleBroker {
             );
         } catch (Exception e) {
             logger.error("Failed to replicate transaction prepare [{}]", xid);
+            throw e;
         }
     }
 
-    private void replicateForgetTransaction(ConnectionContext context, TransactionId xid) {
+    private void replicateForgetTransaction(ConnectionContext context, TransactionId xid) throws Exception {
         try {
             enqueueReplicaEvent(
                     context,
@@ -276,10 +298,11 @@ public class ReplicaSourceBroker extends MutativeRoleBroker {
             );
         } catch (Exception e) {
             logger.error("Failed to replicate transaction forget [{}]", xid);
+            throw e;
         }
     }
 
-    private void replicateRollbackTransaction(ConnectionContext context, TransactionId xid) {
+    private void replicateRollbackTransaction(ConnectionContext context, TransactionId xid) throws Exception {
         try {
             enqueueReplicaEvent(
                     context,
@@ -289,10 +312,11 @@ public class ReplicaSourceBroker extends MutativeRoleBroker {
             );
         } catch (Exception e) {
             logger.error("Failed to replicate transaction rollback [{}]", xid);
+            throw e;
         }
     }
 
-    private void replicateCommitTransaction(ConnectionContext context, TransactionId xid, boolean onePhase) {
+    private void replicateCommitTransaction(ConnectionContext context, TransactionId xid, boolean onePhase) throws Exception {
         try {
             enqueueReplicaEvent(
                     context,
@@ -303,11 +327,12 @@ public class ReplicaSourceBroker extends MutativeRoleBroker {
             );
         } catch (Exception e) {
             logger.error("Failed to replicate commit of transaction [{}]", xid);
+            throw e;
         }
     }
 
 
-    private void replicateDestinationRemoval(ConnectionContext context, ActiveMQDestination destination) {
+    private void replicateDestinationRemoval(ConnectionContext context, ActiveMQDestination destination) throws Exception {
         if (!isReplicatedDestination(destination)) {
             return;
         }
@@ -321,6 +346,7 @@ public class ReplicaSourceBroker extends MutativeRoleBroker {
             destinationsToReplicate.remove(destination, IS_REPLICATED);
         } catch (Exception e) {
             logger.error("Failed to replicate remove of destination {}", destination.getPhysicalName(), e);
+            throw e;
         }
     }
 
@@ -362,7 +388,7 @@ public class ReplicaSourceBroker extends MutativeRoleBroker {
         return subscription;
     }
 
-    private void replicateAddConsumer(ConnectionContext context, ConsumerInfo consumerInfo) {
+    private void replicateAddConsumer(ConnectionContext context, ConsumerInfo consumerInfo) throws Exception {
         if (!needToReplicateConsumer(consumerInfo)) {
             return;
         }
@@ -379,6 +405,7 @@ public class ReplicaSourceBroker extends MutativeRoleBroker {
             );
         } catch (Exception e) {
             logger.error("Failed to replicate adding {}", consumerInfo, e);
+            throw e;
         }
     }
 
@@ -397,7 +424,7 @@ public class ReplicaSourceBroker extends MutativeRoleBroker {
         }
     }
 
-    private void replicateRemoveConsumer(ConnectionContext context, ConsumerInfo consumerInfo) {
+    private void replicateRemoveConsumer(ConnectionContext context, ConsumerInfo consumerInfo) throws Exception {
         if (!needToReplicateConsumer(consumerInfo)) {
             return;
         }
@@ -413,6 +440,7 @@ public class ReplicaSourceBroker extends MutativeRoleBroker {
             );
         } catch (Exception e) {
             logger.error("Failed to replicate adding {}", consumerInfo, e);
+            throw e;
         }
     }
 
@@ -422,7 +450,7 @@ public class ReplicaSourceBroker extends MutativeRoleBroker {
         replicateRemoveSubscription(context, subscriptionInfo);
     }
 
-    private void replicateRemoveSubscription(ConnectionContext context, RemoveSubscriptionInfo subscriptionInfo) {
+    private void replicateRemoveSubscription(ConnectionContext context, RemoveSubscriptionInfo subscriptionInfo) throws Exception {
         if (ReplicaSupport.isReplicationTransport(context.getConnector())) {
             return;
         }
@@ -435,6 +463,7 @@ public class ReplicaSourceBroker extends MutativeRoleBroker {
             );
         } catch (Exception e) {
             logger.error("Failed to replicate removing subscription {}", subscriptionInfo, e);
+            throw e;
         }
     }
 
@@ -658,7 +687,7 @@ public class ReplicaSourceBroker extends MutativeRoleBroker {
     }
 
     private void replicateAck(ConnectionContext connectionContext, MessageAck ack, TransactionId transactionId,
-            List<String> messageIdsToAck) {
+            List<String> messageIdsToAck) throws Exception {
         try {
             TransactionId originalTransactionId = ack.getTransactionId();
             enqueueReplicaEvent(
@@ -680,6 +709,7 @@ public class ReplicaSourceBroker extends MutativeRoleBroker {
                     ack.getFirstMessageId(),
                     ack.getLastMessageId(),
                     ack.getConsumerId(), e);
+            throw e;
         }
     }
 

@@ -57,23 +57,26 @@ public class ReplicaBroker extends MutativeRoleBroker {
     private final ReplicaReplicationQueueSupplier queueProvider;
     private final ReplicaPolicy replicaPolicy;
     private final PeriodAcknowledge periodAcknowledgeCallBack;
+    private final ReplicaStatistics replicaStatistics;
     private ReplicaBrokerEventListener messageListener;
     private ScheduledFuture<?> replicationScheduledFuture;
     private ScheduledFuture<?> ackPollerScheduledFuture;
 
     public ReplicaBroker(Broker broker, ReplicaRoleManagement management, ReplicaReplicationQueueSupplier queueProvider,
-            ReplicaPolicy replicaPolicy) {
+            ReplicaPolicy replicaPolicy, ReplicaStatistics replicaStatistics) {
         super(broker, management);
         this.queueProvider = queueProvider;
         this.replicaPolicy = replicaPolicy;
         this.periodAcknowledgeCallBack = new PeriodAcknowledge(replicaPolicy);
+        this.replicaStatistics = replicaStatistics;
     }
 
     @Override
     public void start(ReplicaRole role) throws Exception {
         init(role);
 
-        logger.info("Starting replica broker");
+        logger.info("Starting replica broker." +
+                (role == ReplicaRole.ack_processed ? " Ack has been processed. Checking the role of the other broker." : ""));
     }
 
     @Override
@@ -90,10 +93,10 @@ public class ReplicaBroker extends MutativeRoleBroker {
 
     @Override
     public void stopBeforeRoleChange(boolean force) throws Exception {
-        logger.info("Stopping broker replication. Forced: [{}]", force);
         if (!force) {
             return;
         }
+        logger.info("Stopping broker replication. Forced: [{}]", force);
 
         updateBrokerState(ReplicaRole.source);
         completeBeforeRoleChange();
@@ -125,12 +128,16 @@ public class ReplicaBroker extends MutativeRoleBroker {
                 }
             }
         }, replicaPolicy.getReplicaAckPeriod(), replicaPolicy.getReplicaAckPeriod(), TimeUnit.MILLISECONDS);
-        messageListener = new ReplicaBrokerEventListener(this, queueProvider, periodAcknowledgeCallBack);
+        messageListener = new ReplicaBrokerEventListener(this, queueProvider, periodAcknowledgeCallBack, replicaStatistics);
     }
 
     private void deinitialize() throws JMSException {
-        replicationScheduledFuture.cancel(true);
-        ackPollerScheduledFuture.cancel(true);
+        if (replicationScheduledFuture != null) {
+            replicationScheduledFuture.cancel(true);
+        }
+        if (ackPollerScheduledFuture != null) {
+            ackPollerScheduledFuture.cancel(true);
+        }
 
         ActiveMQMessageConsumer consumer = eventConsumer.get();
         ActiveMQSession session = connectionSession.get();

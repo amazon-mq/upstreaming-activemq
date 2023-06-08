@@ -16,11 +16,9 @@
  */
 package org.apache.activemq.replica;
 
-import org.apache.activemq.advisory.AdvisoryBroker;
 import org.apache.activemq.broker.Broker;
 import org.apache.activemq.broker.BrokerPluginSupport;
 import org.apache.activemq.broker.BrokerService;
-import org.apache.activemq.broker.MutableBrokerFilter;
 import org.apache.activemq.broker.jmx.AnnotatedMBean;
 import org.apache.activemq.broker.region.CompositeDestinationInterceptor;
 import org.apache.activemq.broker.region.DestinationInterceptor;
@@ -71,9 +69,11 @@ public class ReplicaPlugin extends BrokerPluginSupport {
 
         logger.info("{} installed, running as {}", ReplicaPlugin.class.getName(), role);
 
-        final BrokerService brokerService = broker.getBrokerService();
+        ReplicaStatistics replicaStatistics = new ReplicaStatistics();
+
+        BrokerService brokerService = broker.getBrokerService();
         if (brokerService.isUseJmx()) {
-            replicationView = new ReplicationView(this);
+            replicationView = new ReplicationView(this, replicaStatistics);
             AnnotatedMBean.registerMBean(brokerService.getManagementContext(), replicationView, ReplicationJmxHelper.createJmxName(brokerService));
         }
         
@@ -98,7 +98,7 @@ public class ReplicaPlugin extends BrokerPluginSupport {
         interceptors[interceptors.length - 1] = new ReplicaAdvisorySuppressor();
         compositeInterceptor.setInterceptors(interceptors);
 
-        replicaRoleManagementBroker = new ReplicaRoleManagementBroker(broker, replicaPolicy, role);
+        replicaRoleManagementBroker = new ReplicaRoleManagementBroker(broker, replicaPolicy, role, replicaStatistics);
 
         return new ReplicaAuthorizationBroker(replicaRoleManagementBroker);
     }
@@ -207,12 +207,19 @@ public class ReplicaPlugin extends BrokerPluginSupport {
         replicaPolicy.setControlWebConsoleAccess(controlWebConsoleAccess);
     }
 
+    /**
+     * @org.apache.xbean.Property propertyEditor="com.sun.beans.editors.StringEditor"
+     */
+    public void setHeartBeatPeriod(int heartBeatPeriod) {
+        replicaPolicy.setHeartBeatPeriod(heartBeatPeriod);
+    }
+
     public ReplicaRole getRole() {
         return replicaRoleManagementBroker.getRole().getExternalRole();
     }
 
     public void setReplicaRole(ReplicaRole role, boolean force) throws Exception {
-        logger.info("Called switch role for broker. Params: [{}], [{}]", role.name(), force);
+        logger.debug("Called switch role for broker. Params: [{}], [{}]", role.name(), force);
 
         if (role != ReplicaRole.replica && role != ReplicaRole.source) {
             throw new RuntimeException(String.format("Can't switch role from [%s] to [%s]", this.role.name(), role.name()));

@@ -22,6 +22,7 @@ import org.apache.activemq.broker.BrokerPlugin;
 import org.apache.activemq.broker.jmx.QueueViewMBean;
 import org.apache.activemq.replica.ReplicaPlugin;
 import org.apache.activemq.replica.ReplicaRole;
+import org.apache.activemq.replica.ReplicaSupport;
 import org.junit.Test;
 
 import javax.jms.MessageConsumer;
@@ -54,6 +55,7 @@ public class ReplicaNetworkConnectorsOnTwoPairsOfReplicationBrokersTest extends 
         firstBroker2ReplicaPlugin.setTransportConnectorUri(pair2FirstReplicaBindAddress);
         firstBroker2ReplicaPlugin.setOtherBrokerUri(pair2SecondReplicaBindAddress);
         firstBroker2ReplicaPlugin.setControlWebConsoleAccess(false);
+        firstBroker2ReplicaPlugin.setHeartBeatPeriod(0);
         firstBroker2.setPlugins(new BrokerPlugin[]{firstBroker2ReplicaPlugin});
 
         ReplicaPlugin secondBroker2ReplicaPlugin = new ReplicaPlugin();
@@ -61,6 +63,7 @@ public class ReplicaNetworkConnectorsOnTwoPairsOfReplicationBrokersTest extends 
         secondBroker2ReplicaPlugin.setTransportConnectorUri(pair2SecondReplicaBindAddress);
         secondBroker2ReplicaPlugin.setOtherBrokerUri(pair2FirstReplicaBindAddress);
         secondBroker2ReplicaPlugin.setControlWebConsoleAccess(false);
+        secondBroker2ReplicaPlugin.setHeartBeatPeriod(0);
         secondBroker2.setPlugins(new BrokerPlugin[]{secondBroker2ReplicaPlugin});
 
         firstBroker2.start();
@@ -146,14 +149,20 @@ public class ReplicaNetworkConnectorsOnTwoPairsOfReplicationBrokersTest extends 
             .filter(name -> name.contains("destinationName=" + destination.getPhysicalName()))
             .count(), 1);
 
-        QueueViewMBean firstBrokerDestinationQueue = getQueueView(firstBroker, destination.getPhysicalName());
-        assertEquals(1, firstBrokerDestinationQueue.getDequeueCount());
-        QueueViewMBean first2BrokerDestinationQueue = getQueueView(firstBroker2, destination.getPhysicalName());
-        assertEquals(1, first2BrokerDestinationQueue.getDequeueCount());
-        QueueViewMBean secondBrokerDestinationQueue = getQueueView(secondBroker, destination.getPhysicalName());
-        assertEquals(1, secondBrokerDestinationQueue.getDequeueCount());
-        QueueViewMBean secondBroker2DestinationQueue = getQueueView(secondBroker2, destination.getPhysicalName());
-        assertEquals(1, secondBroker2DestinationQueue.getDequeueCount());
+        waitForCondition(() -> {
+            try {
+                QueueViewMBean firstBrokerDestinationQueue = getQueueView(firstBroker, destination.getPhysicalName());
+                assertEquals(1, firstBrokerDestinationQueue.getDequeueCount());
+                QueueViewMBean first2BrokerDestinationQueue = getQueueView(firstBroker2, destination.getPhysicalName());
+                assertEquals(1, first2BrokerDestinationQueue.getDequeueCount());
+                QueueViewMBean secondBrokerDestinationQueue = getQueueView(secondBroker, destination.getPhysicalName());
+                assertEquals(1, secondBrokerDestinationQueue.getDequeueCount());
+                QueueViewMBean secondBroker2DestinationQueue = getQueueView(secondBroker2, destination.getPhysicalName());
+                assertEquals(1, secondBroker2DestinationQueue.getDequeueCount());
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
 
         firstBrokerProducerSession.close();
         firstBroker2Session.close();

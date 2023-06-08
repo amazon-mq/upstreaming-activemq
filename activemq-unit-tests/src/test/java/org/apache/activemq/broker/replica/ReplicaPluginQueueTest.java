@@ -16,7 +16,6 @@
  */
 package org.apache.activemq.broker.replica;
 
-import org.apache.activemq.ScheduledMessage;
 import org.apache.activemq.broker.jmx.BrokerViewMBean;
 import org.apache.activemq.broker.jmx.QueueViewMBean;
 import org.apache.activemq.command.ActiveMQQueue;
@@ -66,6 +65,7 @@ public class ReplicaPluginQueueTest extends ReplicaPluginTestSupport {
 
         secondBrokerXAConnection = secondBrokerXAConnectionFactory.createXAConnection();
         secondBrokerXAConnection.start();
+        waitUntilReplicationQueueHasConsumer(firstBroker);
     }
 
     @Override
@@ -313,7 +313,7 @@ public class ReplicaPluginQueueTest extends ReplicaPluginTestSupport {
         message.setText(getName());
         firstBrokerProducer.send(message);
 
-        Message receivedMessage = secondBrokerConsumer.receive(LONG_TIMEOUT);
+        Message receivedMessage = secondBrokerConsumer.receive(LONG_TIMEOUT * 2);
         assertNotNull(receivedMessage);
         assertTrue(receivedMessage instanceof TextMessage);
         assertEquals(getName(), ((TextMessage) receivedMessage).getText());

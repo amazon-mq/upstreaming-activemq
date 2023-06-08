@@ -48,17 +48,6 @@ class ReplicationMessageProducer {
 
     void enqueueIntermediateReplicaEvent(ConnectionContext connectionContext, ReplicaEvent event) throws Exception {
         synchronized (ReplicaSupport.INTERMEDIATE_QUEUE_MUTEX) {
-            logger.debug("Replicating {} event", event.getEventType());
-            logger.trace("Replicating {} event: data:\n{}\nproperties:{}", event.getEventType(), new Object() {
-                @Override
-                public String toString() {
-                    try {
-                        return eventSerializer.deserializeMessageData(event.getEventData()).toString();
-                    } catch (IOException e) {
-                        return "<some event data>";
-                    }
-                }
-            }, event.getReplicationProperties()); // FIXME: remove
             enqueueReplicaEvent(connectionContext, event, true, queueProvider.getIntermediateQueue());
         }
     }
@@ -80,6 +69,8 @@ class ReplicationMessageProducer {
         eventMessage.setContent(event.getEventData());
         eventMessage.setProperties(event.getReplicationProperties());
         eventMessage.setTransactionId(event.getTransactionId());
+        eventMessage.setIntProperty(ReplicaSupport.VERSION_PROPERTY, event.getVersion() == null ? ReplicaSupport.CURRENT_VERSION : event.getVersion());
+        eventMessage.setTimestamp(event.getTimestamp() == null ? System.currentTimeMillis() : event.getTimestamp());
         replicaInternalMessageProducer.sendIgnoringFlowControl(connectionContext, eventMessage);
     }
 }

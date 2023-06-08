@@ -36,6 +36,7 @@ import org.apache.activemq.replica.ReplicaPlugin;
 import org.apache.activemq.replica.ReplicaPolicy;
 import org.apache.activemq.replica.ReplicaRole;
 import org.apache.activemq.replica.ReplicaRoleManagementBroker;
+import org.apache.activemq.replica.ReplicaStatistics;
 import org.apache.activemq.replica.ReplicaSupport;
 import org.junit.After;
 import org.junit.Before;
@@ -49,7 +50,6 @@ import javax.jms.TextMessage;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
@@ -142,6 +142,7 @@ public class ReplicationEventHandlingTest extends ReplicaPluginTestSupport {
         replicaEventMessage.setContent(event.getEventData());
         replicaEventMessage.setStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY, event.getEventType().name());
         replicaEventMessage.setStringProperty(ReplicaSupport.SEQUENCE_PROPERTY, "0");
+        replicaEventMessage.setIntProperty(ReplicaSupport.VERSION_PROPERTY, ReplicaSupport.CURRENT_VERSION);
 
         firstBrokerProducer.send(mockMainQueue, replicaEventMessage);
         Thread.sleep(LONG_TIMEOUT);
@@ -162,6 +163,7 @@ public class ReplicationEventHandlingTest extends ReplicaPluginTestSupport {
         replicaEventMessage.setContent(event.getEventData());
         replicaEventMessage.setStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY, event.getEventType().name());
         replicaEventMessage.setStringProperty(ReplicaSupport.SEQUENCE_PROPERTY, "100");
+        replicaEventMessage.setIntProperty(ReplicaSupport.VERSION_PROPERTY, ReplicaSupport.CURRENT_VERSION);
 
         firstBrokerProducer.send(mockMainQueue, replicaEventMessage);
         Thread.sleep(LONG_TIMEOUT);
@@ -192,6 +194,7 @@ public class ReplicationEventHandlingTest extends ReplicaPluginTestSupport {
         replicaEventMessage.setContent(event.getEventData());
         replicaEventMessage.setStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY, event.getEventType().name());
         replicaEventMessage.setStringProperty(ReplicaSupport.SEQUENCE_PROPERTY, "20");
+        replicaEventMessage.setIntProperty(ReplicaSupport.VERSION_PROPERTY, ReplicaSupport.CURRENT_VERSION);
 
         firstBrokerProducer.send(mockMainQueue, replicaEventMessage);
         Thread.sleep(LONG_TIMEOUT);
@@ -216,6 +219,7 @@ public class ReplicationEventHandlingTest extends ReplicaPluginTestSupport {
         replicaEventMessage.setContent(event.getEventData());
         replicaEventMessage.setStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY, event.getEventType().name());
         replicaEventMessage.setStringProperty(ReplicaSupport.SEQUENCE_PROPERTY, "10");
+        replicaEventMessage.setIntProperty(ReplicaSupport.VERSION_PROPERTY, ReplicaSupport.CURRENT_VERSION);
 
         System.out.println("sending first MESSAGE_SEND...");
         firstBrokerProducer.send(mockMainQueue, replicaEventMessage);
@@ -252,13 +256,14 @@ public class ReplicationEventHandlingTest extends ReplicaPluginTestSupport {
             @Override
             public Broker installPlugin(final Broker broker) {
                 nextBrokerSpy = spy(broker);
-                return new ReplicaRoleManagementBroker(nextBrokerSpy, replicaPolicy, ReplicaRole.replica);
+                return new ReplicaRoleManagementBroker(nextBrokerSpy, replicaPolicy, ReplicaRole.replica, new ReplicaStatistics());
             }
         };
         replicaPlugin.setRole(ReplicaRole.replica);
         replicaPlugin.setTransportConnectorUri(secondReplicaBindAddress);
         replicaPlugin.setOtherBrokerUri(firstReplicaBindAddress);
         replicaPlugin.setControlWebConsoleAccess(false);
+        replicaPlugin.setHeartBeatPeriod(0);
 
         answer.setPlugins(new BrokerPlugin[]{replicaPlugin});
         answer.setSchedulerSupport(true);
