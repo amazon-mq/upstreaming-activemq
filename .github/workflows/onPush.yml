@@ -9,7 +9,10 @@
 
 name: run full suite of tests and automations
 
-on: [push, workflow_dispatch]
+on:
+  push:
+    branches:
+      - 'feature/replicationPlugin'
 
 jobs:
   release:
@@ -37,14 +40,17 @@ jobs:
         run: |
           /usr/bin/git fetch || true
           export REMOTE_HEAD=$(/usr/bin/git rev-parse ${{ github.ref }})
+          echo "REMOTE_HEAD=${REMOTE_HEAD}" >> $GITHUB_OUTPUT
           /usr/bin/git diff ${{ steps.sync_data.outputs.SYNC_SHA }}..$REMOTE_HEAD > /tmp/${{ matrix.branch }}-diff.patch
+        id: get_diff
       - uses: actions/checkout@v3
         with:
           ref: ${{ matrix.branch }}
+          fetch-depth: 0
       - run: |
-          export REMOTE_HEAD=$(/usr/bin/git rev-parse origin/$(basename ${{ github.ref }}))
-          echo $REMOTE_HEAD > ci.data
           /usr/bin/git apply --reject --whitespace=fix --exclude=.github* /tmp/${{ matrix.branch }}-diff.patch
+          export REMOTE_HEAD=${{ steps.get_diff.outputs.REMOTE_HEAD }}
+          echo $REMOTE_HEAD > ci.data
           /usr/bin/git status
       - uses: stefanzweifel/git-auto-commit-action@v4
         with:
@@ -54,6 +60,7 @@ jobs:
   full_test_suite:
     name: Run full suite tests on new changes
     runs-on: self-hosted
+    timeout-minutes: 1440
 
     steps:
       - uses: actions/checkout@v3
