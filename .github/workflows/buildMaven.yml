@@ -36,6 +36,7 @@ jobs:
   full_test_suite:
     name: Run full suite tests on new changes
     runs-on: self-hosted
+    timeout-minutes: 720
 
     steps:
       - uses: actions/checkout@v3
