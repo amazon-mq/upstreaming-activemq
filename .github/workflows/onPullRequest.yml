@@ -68,7 +68,9 @@ jobs:
         with:
           maven-version: 3.8.2
       - name: run plugin integration tests
-        run: mvn -s .github/maven-settings.xml -B -e -fae '-Dtest=org.apache.activemq.broker.replica.*Test' test
+        run: |
+          mvn -s .github/maven-settings.xml -U -B -e clean install -DskipTests
+          mvn -s .github/maven-settings.xml -B -e test -pl activemq-unit-tests -Dactivemq.tests=replica-plugin
 
   verify_with_Rat:
     runs-on: self-hosted
