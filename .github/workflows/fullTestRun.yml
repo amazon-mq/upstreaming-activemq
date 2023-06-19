@@ -7,7 +7,7 @@
 #    CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing
 #    permissions and limitations under the License.
 
-name: Build ActiveMQ CRDR artifact
+name: run full test suite on 5.17.3.crdr branch
 
 on:
   push:
@@ -15,8 +15,10 @@ on:
       - activemq-5.17.3.crdr
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  full_test_suite:
+    name: Run full suite tests on new changes
+    runs-on: self-hosted
+    timeout-minutes: 720
 
     steps:
       - uses: actions/checkout@v3
@@ -26,9 +28,9 @@ jobs:
           java-version: '11'
           distribution: 'corretto'
           cache: maven
-      - name: Build with Maven
-        run: mvn -s .github/maven-settings.xml -U -B -e clean install -DskipTests
-      - uses: actions/upload-artifact@v3
+      - name: Set up Maven
+        uses: stCarolas/setup-maven@v4.5
         with:
-          name: apache-activemq-${{ github.ref_name }}
-          path: assembly/target/apache-activemq-*-bin.tar.gz
+          maven-version: 3.8.2
+      - name: run full tests
+        run: mvn -s .github/maven-settings.xml -B -e -fae test -Dsurefire.rerunFailingTestsCount=3
