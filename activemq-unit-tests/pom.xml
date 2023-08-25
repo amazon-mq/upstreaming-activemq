@@ -292,6 +292,12 @@
       <artifactId>mockito-inline</artifactId>
       <scope>test</scope>
     </dependency>
+      <dependency>
+          <groupId>org.eclipse.paho</groupId>
+          <artifactId>org.eclipse.paho.client.mqttv3</artifactId>
+          <version>1.2.1</version>
+          <scope>test</scope>
+      </dependency>
   </dependencies>
 
   <reporting>
@@ -1188,6 +1194,27 @@
                   </plugin>
               </plugins>
           </build>
+      </profile>
+      <profile>
+        <id>activemq.tests-replica-plugin</id>
+        <activation>
+          <property>
+            <name>activemq.tests</name>
+            <value>replica-plugin</value>
+          </property>
+        </activation>
+        <build>
+          <plugins>
+            <plugin>
+              <artifactId>maven-surefire-plugin</artifactId>
+              <configuration>
+                <includes>
+                  <include>**/replica/*Test.*</include>
+                </includes>
+              </configuration>
+            </plugin>
+          </plugins>
+        </build>
       </profile>
   </profiles>
 </project>
