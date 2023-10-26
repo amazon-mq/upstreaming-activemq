@@ -7,12 +7,12 @@
 #    CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing
 #    permissions and limitations under the License.
 
-name: run full test suite on 5.18.2.crdr branch
+name: run full test suite on 5.17.6.crdr branch
 
 on:
   push:
     branches:
-      - activemq-5.18.2.crdr
+      - 5.17.6.crdr
   workflow_dispatch:
 
 jobs:

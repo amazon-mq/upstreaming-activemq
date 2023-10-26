@@ -12,7 +12,7 @@ name: Build ActiveMQ CRDR artifact
 on:
   push:
     branches:
-      - activemq-5.18.2.crdr
+      - 5.17.6.crdr
 
 jobs:
   build:

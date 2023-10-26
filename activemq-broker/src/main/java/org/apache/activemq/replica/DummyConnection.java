@@ -124,6 +124,11 @@ class DummyConnection implements Connection {
     }
 
     @Override
+    public Long getConnectedTimestamp() {
+        return null;
+    }
+
+    @Override
     public void start() throws Exception {
     }
 
