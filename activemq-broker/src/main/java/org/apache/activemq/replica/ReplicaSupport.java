@@ -19,6 +19,7 @@ package org.apache.activemq.replica;
 import org.apache.activemq.advisory.AdvisorySupport;
 import org.apache.activemq.broker.Connector;
 import org.apache.activemq.broker.TransportConnector;
+import org.apache.activemq.broker.region.Destination;
 import org.apache.activemq.command.ActiveMQDestination;
 import org.apache.activemq.util.LongSequenceGenerator;
 
@@ -77,6 +78,10 @@ public class ReplicaSupport {
 
     public static boolean isReplicationDestination(ActiveMQDestination destination) {
         return REPLICATION_DESTINATION_NAMES.contains(destination.getPhysicalName());
+    }
+
+    public static boolean isReplicationDestination(Destination destination) {
+        return REPLICATION_DESTINATION_NAMES.contains(destination.getName());
     }
 
     public static boolean isMainReplicationQueue(ActiveMQDestination destination) {

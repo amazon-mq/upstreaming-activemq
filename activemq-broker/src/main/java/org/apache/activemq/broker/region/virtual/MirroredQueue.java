@@ -26,6 +26,8 @@ import org.apache.activemq.command.Message;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import static org.apache.activemq.replica.ReplicaSupport.isReplicationDestination;
+
 /**
  * Creates <a href="https://activemq.apache.org/mirrored-queues">Mirrored
  * Queue</a> using a prefix and postfix to define the topic name on which to mirror the queue to.
@@ -41,7 +43,7 @@ public class MirroredQueue implements DestinationInterceptor, BrokerServiceAware
     private BrokerService brokerService;
 
     public Destination intercept(final Destination destination) {
-        if (destination.getActiveMQDestination().isQueue()) {
+        if (destination.getActiveMQDestination().isQueue() && !isReplicationDestination(destination)) {
             if (!destination.getActiveMQDestination().isTemporary() || brokerService.isUseTempMirroredQueues()) {
                 try {
                     final Destination mirrorDestination = getMirrorDestination(destination);
