@@ -46,7 +46,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 
-import javax.jms.JMSException;
+import jakarta.jms.JMSException;
 import javax.transaction.xa.XAException;
 import javax.transaction.xa.Xid;
 import java.io.File;

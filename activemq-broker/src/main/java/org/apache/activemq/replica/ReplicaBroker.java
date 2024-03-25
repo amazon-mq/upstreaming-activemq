@@ -33,8 +33,8 @@ import org.apache.activemq.command.MessageDispatch;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.jms.JMSException;
-import javax.jms.MessageConsumer;
+import jakarta.jms.JMSException;
+import jakarta.jms.MessageConsumer;
 import java.lang.reflect.Method;
 import java.text.MessageFormat;
 import java.util.concurrent.Executors;

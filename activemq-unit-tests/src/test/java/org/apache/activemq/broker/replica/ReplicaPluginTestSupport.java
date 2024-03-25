@@ -33,7 +33,7 @@ import org.apache.activemq.replica.jmx.ReplicationViewMBean;
 import org.apache.activemq.util.Wait;
 import org.apache.commons.io.FileUtils;
 
-import javax.jms.ConnectionFactory;
+import jakarta.jms.ConnectionFactory;
 import javax.management.MBeanServer;
 import javax.management.MBeanServerInvocationHandler;
 import javax.management.MalformedObjectNameException;

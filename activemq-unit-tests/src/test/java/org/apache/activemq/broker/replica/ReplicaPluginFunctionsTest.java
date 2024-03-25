@@ -26,11 +26,11 @@ import org.apache.activemq.util.Wait;
 import org.apache.commons.lang.RandomStringUtils;
 import org.junit.Test;
 
-import javax.jms.Connection;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
-import javax.jms.TextMessage;
-import javax.jms.XAConnection;
+import jakarta.jms.Connection;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
+import jakarta.jms.TextMessage;
+import jakarta.jms.XAConnection;
 import javax.management.MalformedObjectNameException;
 import java.util.function.Function;
 

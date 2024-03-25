@@ -120,9 +120,6 @@ public class ReplicaPlugin extends BrokerPluginSupport {
         return this;
     }
 
-    /**
-     * @org.apache.xbean.Property propertyEditor="com.sun.beans.editors.StringEditor"
-     */
     public void setRole(String role) {
         this.role = Arrays.stream(ReplicaRole.values())
             .filter(roleValue -> roleValue.name().equalsIgnoreCase(role))
@@ -130,100 +127,58 @@ public class ReplicaPlugin extends BrokerPluginSupport {
             .orElseThrow(() -> new IllegalArgumentException(role + " is not a known " + ReplicaRole.class.getSimpleName()));
     }
 
-    /**
-     * @org.apache.xbean.Property propertyEditor="com.sun.beans.editors.StringEditor"
-     */
     public void setOtherBrokerUri(String uri) {
         replicaPolicy.setOtherBrokerUri(uri);
     }
 
-    /**
-     * @org.apache.xbean.Property propertyEditor="com.sun.beans.editors.StringEditor"
-     */
     public void setTransportConnectorUri(String uri) {
         replicaPolicy.setTransportConnectorUri(URI.create(uri));
     }
 
-    /**
-     * @org.apache.xbean.Property propertyEditor="com.sun.beans.editors.StringEditor"
-     */
     public void setUserName(String userName) {
         replicaPolicy.setUserName(userName);
     }
 
-    /**
-     * @org.apache.xbean.Property propertyEditor="com.sun.beans.editors.StringEditor"
-     */
     public void setPassword(String password) {
         replicaPolicy.setPassword(password);
     }
 
-    /**
-     * @org.apache.xbean.Property propertyEditor="com.sun.beans.editors.StringEditor"
-     */
     public void setSourceSendPeriod(int period) {
         replicaPolicy.setSourceSendPeriod(period);
     }
 
-    /**
-     * @org.apache.xbean.Property propertyEditor="com.sun.beans.editors.StringEditor"
-     */
     public void setCompactorAdditionalMessagesLimit(int limit) {
         replicaPolicy.setCompactorAdditionalMessagesLimit(limit);
     }
 
-    /**
-     * @org.apache.xbean.Property propertyEditor="com.sun.beans.editors.StringEditor"
-     */
     public void setMaxBatchLength(int length) {
         replicaPolicy.setMaxBatchLength(length);
     }
 
-    /**
-     * @org.apache.xbean.Property propertyEditor="com.sun.beans.editors.StringEditor"
-     */
     public void setMaxBatchSize(int size) {
         replicaPolicy.setMaxBatchSize(size);
     }
 
-    /**
-     * @org.apache.xbean.Property propertyEditor="com.sun.beans.editors.StringEditor"
-     */
     public void setReplicaAckPeriod(int period) {
         replicaPolicy.setReplicaAckPeriod(period);
     }
 
-    /**
-     * @org.apache.xbean.Property propertyEditor="com.sun.beans.editors.StringEditor"
-     */
     public void setReplicaMaxAckBatchSize(int size) {
         replicaPolicy.setReplicaMaxAckBatchSize(size);
     }
 
-    /**
-     * @org.apache.xbean.Property propertyEditor="com.sun.beans.editors.StringEditor"
-     */
     public void setControlWebConsoleAccess(boolean controlWebConsoleAccess) {
         replicaPolicy.setControlWebConsoleAccess(controlWebConsoleAccess);
     }
 
-    /**
-     * @org.apache.xbean.Property propertyEditor="com.sun.beans.editors.StringEditor"
-     */
     public void setHeartBeatPeriod(int heartBeatPeriod) {
         replicaPolicy.setHeartBeatPeriod(heartBeatPeriod);
     }
 
-    /**
-     * @org.apache.xbean.Property propertyEditor="com.sun.beans.editors.StringEditor"
-     */
     public void setSourceReplicationFlowControl(boolean sourceReplicationFlowControl) {
         replicaPolicy.setSourceReplicationFlowControl(sourceReplicationFlowControl);
     }
 
-    /**
-     * @org.apache.xbean.Property propertyEditor="com.sun.beans.editors.StringEditor"
-     */
     public void setReplicaReplicationFlowControl(boolean replicaReplicationFlowControl) {
         replicaPolicy.setReplicaReplicationFlowControl(replicaReplicationFlowControl);
     }

@@ -23,9 +23,9 @@ import org.apache.activemq.util.Wait;
 import org.junit.Test;
 import org.springframework.jms.core.JmsTemplate;
 
-import javax.jms.Connection;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
+import jakarta.jms.Connection;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
 
 public class ReplicationQueueOperationsTest extends ReplicaPluginTestSupport {
     protected Connection firstBrokerConnection;
