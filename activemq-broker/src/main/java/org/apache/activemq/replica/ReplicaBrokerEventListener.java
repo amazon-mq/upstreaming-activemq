@@ -44,9 +44,9 @@ import org.apache.activemq.usage.MemoryUsage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.MessageListener;
+import jakarta.jms.JMSException;
+import jakarta.jms.Message;
+import jakarta.jms.MessageListener;
 import javax.transaction.xa.XAException;
 import java.io.IOException;
 import java.math.BigInteger;

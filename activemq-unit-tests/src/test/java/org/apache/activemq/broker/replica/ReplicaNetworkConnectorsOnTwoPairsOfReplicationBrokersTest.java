@@ -25,10 +25,10 @@ import org.apache.activemq.replica.ReplicaRole;
 import org.apache.activemq.replica.ReplicaSupport;
 import org.junit.Test;
 
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
-import javax.jms.TextMessage;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Session;
+import jakarta.jms.TextMessage;
 import javax.management.ObjectName;
 import java.net.URI;
 import java.util.Arrays;

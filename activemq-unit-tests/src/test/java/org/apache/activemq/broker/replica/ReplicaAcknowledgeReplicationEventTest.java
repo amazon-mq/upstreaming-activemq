@@ -40,7 +40,7 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
-import javax.jms.*;
+import jakarta.jms.*;
 import java.lang.IllegalStateException;
 import java.net.URI;
 
