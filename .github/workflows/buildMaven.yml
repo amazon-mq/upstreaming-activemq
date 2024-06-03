@@ -32,3 +32,12 @@ jobs:
         with:
           name: apache-activemq-${{ github.ref_name }}
           path: assembly/target/apache-activemq-*-bin.tar.gz
+      - name: Generate checksum
+        uses: jmgilman/actions-generate-checksum@v1
+        with:
+          patterns: |
+            assembly/target/apache-activemq-*-bin.tar.gz
+      - uses: actions/upload-artifact@v3
+        with:
+          name: checksum.txt
+          path: checksum.txt
