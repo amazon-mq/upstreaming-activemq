@@ -26,7 +26,10 @@ import org.apache.activemq.broker.region.Destination;
 import org.apache.activemq.broker.region.DurableTopicSubscription;
 import org.apache.activemq.broker.region.IndirectMessageReference;
 import org.apache.activemq.broker.region.Queue;
+import org.apache.activemq.broker.region.Region;
+import org.apache.activemq.broker.region.RegionBroker;
 import org.apache.activemq.broker.region.Subscription;
+import org.apache.activemq.broker.region.TopicRegion;
 import org.apache.activemq.command.ActiveMQDestination;
 import org.apache.activemq.command.ActiveMQMessage;
 import org.apache.activemq.command.ConnectionId;
@@ -41,6 +44,7 @@ import org.apache.activemq.command.TransactionId;
 import org.apache.activemq.replica.storage.ReplicaSequenceStorage;
 import org.apache.activemq.transaction.Transaction;
 import org.apache.activemq.usage.MemoryUsage;
+import org.apache.activemq.util.SubscriptionKey;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -522,6 +526,16 @@ public class ReplicaBrokerEventListener implements MessageListener {
 
     private void addDurableConsumer(ConsumerInfo consumerInfo, String clientId) throws Exception {
         try {
+            boolean exists = broker.getDestinations(consumerInfo.getDestination()).stream()
+                    .findFirst()
+                    .map(Destination::getConsumers)
+                    .stream().flatMap(Collection::stream)
+                    .anyMatch(v -> v.getConsumerInfo().getSubscriptionName().equals(consumerInfo.getSubscriptionName()));
+            if (exists) {
+                // consumer already exists
+                return;
+            }
+
             consumerInfo.setPrefetchSize(0);
             ConnectionContext context = connectionContext.copy();
             context.setClientId(clientId);
@@ -562,6 +576,11 @@ public class ReplicaBrokerEventListener implements MessageListener {
 
     private void removeDurableConsumerSubscription(RemoveSubscriptionInfo subscriptionInfo) throws Exception {
         try {
+            TopicRegion topicRegion = (TopicRegion) ((RegionBroker) broker.getBrokerService().getRegionBroker()).getTopicRegion();
+            if (topicRegion.lookupSubscription(subscriptionInfo.getSubscriptionName(), subscriptionInfo.getClientId()) == null) {
+                // consumer doesn't exist
+                return;
+            }
             ConnectionContext context = connectionContext.copy();
             context.setClientId(subscriptionInfo.getClientId());
             broker.removeSubscription(context, subscriptionInfo);
