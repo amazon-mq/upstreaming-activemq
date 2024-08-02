@@ -16,16 +16,17 @@
  */
 package org.apache.activemq.replica;
 
-import org.apache.activemq.ScheduledMessage;
 import org.apache.activemq.broker.Broker;
 import org.apache.activemq.broker.ConnectionContext;
 import org.apache.activemq.broker.ConsumerBrokerExchange;
 import org.apache.activemq.broker.ProducerBrokerExchange;
 import org.apache.activemq.broker.region.Destination;
+import org.apache.activemq.broker.region.DurableTopicSubscription;
 import org.apache.activemq.broker.region.MessageReference;
 import org.apache.activemq.broker.region.PrefetchSubscription;
 import org.apache.activemq.broker.region.QueueBrowserSubscription;
 import org.apache.activemq.broker.region.Subscription;
+import org.apache.activemq.broker.region.Topic;
 import org.apache.activemq.command.ActiveMQDestination;
 import org.apache.activemq.command.ActiveMQMessage;
 import org.apache.activemq.command.ConnectionId;
@@ -41,9 +42,9 @@ import org.apache.activemq.filter.DestinationMapEntry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -171,8 +172,24 @@ public class ReplicaSourceBroker extends MutativeRoleBroker {
 
     private void ensureDestinationsAreReplicated() throws Exception {
         for (ActiveMQDestination d : getDurableDestinations()) {
-            if (shouldReplicateDestination(d)) {
-                replicateDestinationCreation(getAdminConnectionContext(), d);
+            if (!shouldReplicateDestination(d)) {
+                continue;
+            }
+            replicateDestinationCreation(getAdminConnectionContext(), d);
+
+            if (!d.isTopic()) {
+                continue;
+            }
+
+            List<DurableTopicSubscription> durableTopicSubscriptions = getDestinations(d).stream().findFirst()
+                    .map(DestinationExtractor::extractTopic)
+                    .map(Topic::getDurableTopicSubs)
+                    .stream()
+                    .map(Map::values)
+                    .flatMap(Collection::stream)
+                    .collect(Collectors.toList());
+            for (DurableTopicSubscription sub : durableTopicSubscriptions) {
+                replicateAddConsumer(getAdminConnectionContext(), sub.getConsumerInfo(), sub.getContext().getClientId());
             }
         }
     }
@@ -379,7 +396,7 @@ public class ReplicaSourceBroker extends MutativeRoleBroker {
     @Override
     public Subscription addConsumer(ConnectionContext context, ConsumerInfo consumerInfo) throws Exception {
         Subscription subscription = super.addConsumer(context, consumerInfo);
-        replicateAddConsumer(context, consumerInfo);
+        replicateAddConsumer(context, consumerInfo, context.getClientId());
 
         if (ReplicaSupport.isMainReplicationQueue(consumerInfo.getDestination())) {
             replicaSequencer.updateMainQueueConsumerStatus();
@@ -388,7 +405,7 @@ public class ReplicaSourceBroker extends MutativeRoleBroker {
         return subscription;
     }
 
-    private void replicateAddConsumer(ConnectionContext context, ConsumerInfo consumerInfo) throws Exception {
+    private void replicateAddConsumer(ConnectionContext context, ConsumerInfo consumerInfo, String clientId) throws Exception {
         if (!needToReplicateConsumer(consumerInfo)) {
             return;
         }
@@ -401,7 +418,7 @@ public class ReplicaSourceBroker extends MutativeRoleBroker {
                     new ReplicaEvent()
                             .setEventType(ReplicaEventType.ADD_DURABLE_CONSUMER)
                             .setEventData(eventSerializer.serializeReplicationData(consumerInfo))
-                            .setReplicationProperty(ReplicaSupport.CLIENT_ID_PROPERTY, context.getClientId())
+                            .setReplicationProperty(ReplicaSupport.CLIENT_ID_PROPERTY, clientId)
             );
         } catch (Exception e) {
             logger.error("Failed to replicate adding {}", consumerInfo, e);
