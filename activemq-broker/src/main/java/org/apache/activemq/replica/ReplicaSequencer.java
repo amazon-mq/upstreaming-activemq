@@ -595,6 +595,9 @@ public class ReplicaSequencer {
 
             broker.commitTransaction(connectionContext, transactionId, true);
 
+            restoreSequenceStorage.iterate();
+            sequenceStorage.iterate();
+
             sequence = newSequence;
         } catch (Exception e) {
             logger.error("Failed to persist messages in the main replication queue", e);
