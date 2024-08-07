@@ -39,17 +39,10 @@ public class ReplicaRoleStorage extends ReplicaBaseStorage {
     }
 
     public ReplicaRole initialize(ConnectionContext connectionContext) throws Exception {
-        List<ActiveMQTextMessage> allMessages = super.initializeBase(connectionContext);
+        List<ActiveMQTextMessage> allMessages = super.initializeBase(connectionContext, true);
 
-        if (allMessages.size() == 0) {
+        if (allMessages.isEmpty()) {
             return null;
-        }
-
-        if (allMessages.size() > 1) {
-            logger.error("Found more than one message during role storage initialization");
-            for (int i = 0; i < allMessages.size() - 1; i++) {
-                queue.removeMessage(allMessages.get(i).getMessageId().toString());
-            }
         }
 
         return ReplicaRole.valueOf(allMessages.get(0).getText());

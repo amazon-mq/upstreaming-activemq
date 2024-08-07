@@ -27,6 +27,7 @@ import org.apache.activemq.command.ActiveMQTextMessage;
 import org.apache.activemq.command.ConnectionId;
 import org.apache.activemq.command.ConsumerId;
 import org.apache.activemq.command.ConsumerInfo;
+import org.apache.activemq.command.LocalTransactionId;
 import org.apache.activemq.command.MessageAck;
 import org.apache.activemq.command.MessageId;
 import org.apache.activemq.command.ProducerId;
@@ -37,7 +38,10 @@ import org.apache.activemq.replica.ReplicaInternalMessageProducer;
 import org.apache.activemq.replica.ReplicaSupport;
 import org.apache.activemq.util.IdGenerator;
 import org.apache.activemq.util.LongSequenceGenerator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -45,11 +49,12 @@ import static java.util.Objects.requireNonNull;
 
 public abstract class ReplicaBaseStorage {
 
+    private final Logger logger = LoggerFactory.getLogger(ReplicaBaseStorage.class);
+
     protected final ProducerId replicationProducerId = new ProducerId();
     private final LongSequenceGenerator eventMessageIdGenerator = new LongSequenceGenerator();
 
     protected Broker broker;
-    protected ConnectionContext connectionContext;
     protected ReplicaInternalMessageProducer replicaInternalMessageProducer;
     protected ActiveMQQueue destination;
     protected Queue queue;
@@ -68,7 +73,7 @@ public abstract class ReplicaBaseStorage {
         replicationProducerId.setConnectionId(new IdGenerator().generateId());
     }
 
-    protected List<ActiveMQTextMessage> initializeBase(ConnectionContext connectionContext) throws Exception {
+    protected List<ActiveMQTextMessage> initializeBase(ConnectionContext connectionContext, boolean keepOnlyOneMessage) throws Exception {
         queue = broker.getDestinations(destination).stream().findFirst()
                 .map(DestinationExtractor::extractQueue).orElseThrow();
         ConnectionId connectionId = new ConnectionId(new IdGenerator(idGeneratorPrefix).generateId());
@@ -84,8 +89,43 @@ public abstract class ReplicaBaseStorage {
         subscription = (PrefetchSubscription) broker.addConsumer(connectionContext, consumerInfo);
         queue.iterate();
 
-        return subscription.getDispatched().stream().map(MessageReference::getMessage)
+        List<ActiveMQTextMessage> allMessages = subscription.getDispatched().stream().map(MessageReference::getMessage)
                 .map(ActiveMQTextMessage.class::cast).collect(Collectors.toList());
+
+
+        if (keepOnlyOneMessage) {
+            return keepOnlyOneMessage(connectionContext, allMessages);
+        }
+        return allMessages;
+
+    }
+
+    private List<ActiveMQTextMessage> keepOnlyOneMessage(ConnectionContext connectionContext, List<ActiveMQTextMessage> allMessages) throws Exception {
+        if (allMessages.size() < 2) {
+            return allMessages;
+        }
+
+        logger.error("Found more than one message during storage initialization. Destination: " + destination + ", selector: " + selector);
+
+        TransactionId transactionId = new LocalTransactionId(
+                new ConnectionId(ReplicaSupport.REPLICATION_PLUGIN_CONNECTION_ID),
+                ReplicaSupport.LOCAL_TRANSACTION_ID_GENERATOR.getNextSequenceId());
+
+        broker.beginTransaction(connectionContext, transactionId);
+        try {
+            MessageAck ack = new MessageAck(allMessages.get(allMessages.size() - 2).getMessage(), MessageAck.STANDARD_ACK_TYPE, allMessages.size() - 1);
+            ack.setFirstMessageId(allMessages.get(0).getMessageId());
+            ack.setDestination(destination);
+            ack.setTransactionId(transactionId);
+            acknowledge(connectionContext, ack);
+
+            broker.commitTransaction(connectionContext, transactionId, true);
+        } catch (Exception e) {
+            broker.rollbackTransaction(connectionContext, transactionId);
+            throw e;
+        }
+
+        return Collections.singletonList(allMessages.get(allMessages.size() - 1));
     }
 
     protected void acknowledgeAll(ConnectionContext connectionContext, TransactionId tid) throws Exception {
@@ -131,5 +171,9 @@ public abstract class ReplicaBaseStorage {
 
     public void send(ConnectionContext connectionContext, ActiveMQTextMessage seqMessage) throws Exception {
         replicaInternalMessageProducer.sendForcingFlowControl(connectionContext, seqMessage);
+    }
+
+    public void iterate() {
+        queue.iterate();
     }
 }
