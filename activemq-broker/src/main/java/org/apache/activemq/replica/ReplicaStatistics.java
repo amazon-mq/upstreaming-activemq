@@ -25,6 +25,8 @@ import java.util.concurrent.atomic.AtomicLong;
 
 public class ReplicaStatistics {
 
+    private static final int TPS_UPDATE_PERIOD = 60;
+
     private AtomicLong replicationTps;
     private AtomicLong tpsCounter;
     private AtomicLong lastTpsCounter;
@@ -47,12 +49,12 @@ public class ReplicaStatistics {
             if (replicationTps == null) {
                 replicationTps = new AtomicLong();
             }
-            replicationTps.set((c - lastTpsCounter.get()) / 10);
             if (lastTpsCounter == null) {
                 lastTpsCounter = new AtomicLong();
             }
+            replicationTps.set((c - lastTpsCounter.get()) / TPS_UPDATE_PERIOD);
             lastTpsCounter.set(c);
-        }, 60, 60, TimeUnit.SECONDS);
+        }, TPS_UPDATE_PERIOD, TPS_UPDATE_PERIOD, TimeUnit.SECONDS);
     }
 
     public void reset() {
