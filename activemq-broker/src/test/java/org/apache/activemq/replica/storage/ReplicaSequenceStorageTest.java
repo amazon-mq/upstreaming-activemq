@@ -103,8 +103,16 @@ public class ReplicaSequenceStorageTest {
                 .thenReturn(List.of(new IndirectMessageReference(message1), new IndirectMessageReference(message2)));
 
         String initialize = replicaSequenceStorage.initialize(connectionContext);
-        assertThat(initialize).isEqualTo(message1.getText());
-        verify(sequenceQueue, times(1)).removeMessage(eq(message1.getMessageId().toString()));
+        assertThat(initialize).isEqualTo(message2.getText());
+
+        ArgumentCaptor<MessageAck> ackArgumentCaptor = ArgumentCaptor.forClass(MessageAck.class);
+        verify(broker).acknowledge(any(), ackArgumentCaptor.capture());
+        MessageAck value = ackArgumentCaptor.getValue();
+        assertThat(value.getFirstMessageId()).isEqualTo(message1.getMessageId());
+        assertThat(value.getLastMessageId()).isEqualTo(message1.getMessageId());
+        assertThat(value.getDestination()).isEqualTo(sequenceQueueDestination);
+        assertThat(value.getMessageCount()).isEqualTo(1);
+        assertThat(value.getAckType()).isEqualTo(MessageAck.STANDARD_ACK_TYPE);
     }
 
     @Test
@@ -145,7 +153,7 @@ public class ReplicaSequenceStorageTest {
         when(messageReference2.getMessage()).thenReturn(message2);
         when(messageReference2.getMessageId()).thenReturn(message2.getMessageId());
 
-        when(subscription.getDispatched()).thenReturn(List.of(messageReference1, messageReference2));
+        when(subscription.getDispatched()).thenReturn(List.of(), List.of(messageReference1, messageReference2));
         replicaSequenceStorage.initialize(connectionContext);
 
         ArgumentCaptor<MessageAck> ackArgumentCaptor = ArgumentCaptor.forClass(MessageAck.class);
