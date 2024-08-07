@@ -28,25 +28,16 @@ import java.util.List;
 
 public class ReplicaSequenceStorage extends ReplicaBaseSequenceStorage {
 
-    private final Logger logger = LoggerFactory.getLogger(ReplicaSequenceStorage.class);
-
     public ReplicaSequenceStorage(Broker broker, ReplicaReplicationQueueSupplier queueProvider,
             ReplicaInternalMessageProducer replicaInternalMessageProducer, String sequenceName) {
         super(broker, queueProvider, replicaInternalMessageProducer, sequenceName);
     }
 
     public String initialize(ConnectionContext connectionContext) throws Exception {
-        List<ActiveMQTextMessage> allMessages = super.initializeBase(connectionContext);
+        List<ActiveMQTextMessage> allMessages = super.initializeBase(connectionContext, true);
 
-        if (allMessages.size() == 0) {
+        if (allMessages.isEmpty()) {
             return null;
-        }
-
-        if (allMessages.size() > 1) {
-            logger.error("Found more than one message during sequence storage initialization");
-            for (int i = 0; i < allMessages.size() - 1; i++) {
-                queue.removeMessage(allMessages.get(i).getMessageId().toString());
-            }
         }
 
         return allMessages.get(0).getText();

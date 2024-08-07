@@ -193,6 +193,9 @@ public class ReplicaBrokerEventListener implements MessageListener {
                     sequenceStorage.enqueue(connectionContext, tid, sequence.toString() + "#" + sequenceMessageId);
 
                     broker.commitTransaction(connectionContext, tid, true);
+
+                    sequenceStorage.iterate();
+
                     acknowledgeCallback.setSafeToAck(true);
                 }
             } catch (Exception e) {
