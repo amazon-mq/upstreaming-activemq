@@ -117,7 +117,7 @@ public class ReplicaCompactor {
                 .collect(Collectors.toSet());
 
         Set<String> ignore = new HashSet<>();
-        for (int i = 0; i < ReplicaSupport.INTERMEDIATE_QUEUE_PREFETCH_SIZE / additionalMessagesLimit + 1; i++) {
+        for (int i = 0; i < additionalMessagesLimit / ReplicaSupport.INTERMEDIATE_QUEUE_PREFETCH_SIZE + 1; i++) {
             List<QueueMessageReference> acks =
                     intermediateQueue.getMatchingMessages(connectionContext,
                             new AckMessageReferenceFilter(toProcessIds, dispatchedMessageIds, ignore, dispatched),
