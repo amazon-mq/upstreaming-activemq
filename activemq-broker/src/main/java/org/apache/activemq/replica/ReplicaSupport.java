@@ -33,7 +33,7 @@ public class ReplicaSupport {
         // Intentionally hidden
     }
 
-    public static final int CURRENT_VERSION = 2;
+    public static final int CURRENT_VERSION = 3;
     public static final int DEFAULT_VERSION = 1;
 
     public static final int INTERMEDIATE_QUEUE_PREFETCH_SIZE = 10000;
@@ -54,6 +54,7 @@ public class ReplicaSupport {
 
     public static final String TRANSACTION_ONE_PHASE_PROPERTY = "transactionOnePhaseProperty";
     public static final String CLIENT_ID_PROPERTY = "clientIdProperty";
+    public static final String SUBSCRIPTION_NAME_PROPERTY = "subscriptionNameProperty";
     public static final String IS_ORIGINAL_MESSAGE_SENT_TO_QUEUE_PROPERTY = "isOriginalMessageSentToQueueProperty";
     public static final String ORIGINAL_MESSAGE_DESTINATION_PROPERTY = "originalMessageDestinationProperty";
     public static final String IS_ORIGINAL_MESSAGE_IN_XA_TRANSACTION_PROPERTY = "isOriginalMessageInXaTransactionProperty";
