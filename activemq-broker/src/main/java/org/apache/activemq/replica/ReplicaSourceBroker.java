@@ -681,7 +681,7 @@ public class ReplicaSourceBroker extends MutativeRoleBroker {
 
         try {
             super.acknowledge(consumerExchange, ack);
-            replicateAck(connectionContext, ack, transactionId, messageIdsToAck);
+            replicateAck(connectionContext, ack, subscription, transactionId, messageIdsToAck);
             if (isInternalTransaction) {
                 super.commitTransaction(connectionContext, transactionId, true);
             }
@@ -705,24 +705,30 @@ public class ReplicaSourceBroker extends MutativeRoleBroker {
                 .collect(Collectors.toList());
     }
 
-    private void replicateAck(ConnectionContext connectionContext, MessageAck ack, TransactionId transactionId,
-            List<String> messageIdsToAck) throws Exception {
+    private void replicateAck(ConnectionContext connectionContext, MessageAck ack, PrefetchSubscription subscription,
+            TransactionId transactionId, List<String> messageIdsToAck) throws Exception {
         try {
             TransactionId originalTransactionId = ack.getTransactionId();
-            enqueueReplicaEvent(
-                    connectionContext,
-                    new ReplicaEvent()
-                            .setEventType(ReplicaEventType.MESSAGE_ACK)
-                            .setEventData(eventSerializer.serializeReplicationData(ack))
-                            .setTransactionId(transactionId)
-                            .setReplicationProperty(ReplicaSupport.MESSAGE_IDS_PROPERTY, messageIdsToAck)
-                            .setReplicationProperty(ReplicaSupport.IS_ORIGINAL_MESSAGE_SENT_TO_QUEUE_PROPERTY,
-                                    ack.getDestination().isQueue())
-                            .setReplicationProperty(ReplicaSupport.ORIGINAL_MESSAGE_DESTINATION_PROPERTY,
-                                    ack.getDestination().toString())
-                            .setReplicationProperty(ReplicaSupport.IS_ORIGINAL_MESSAGE_IN_XA_TRANSACTION_PROPERTY,
-                                    originalTransactionId != null && originalTransactionId.isXATransaction())
-            );
+            ActiveMQDestination destination = ack.getDestination();
+            ReplicaEvent event = new ReplicaEvent()
+                    .setEventType(ReplicaEventType.MESSAGE_ACK)
+                    .setEventData(eventSerializer.serializeReplicationData(ack))
+                    .setTransactionId(transactionId)
+                    .setReplicationProperty(ReplicaSupport.MESSAGE_IDS_PROPERTY, messageIdsToAck)
+                    .setReplicationProperty(ReplicaSupport.IS_ORIGINAL_MESSAGE_SENT_TO_QUEUE_PROPERTY,
+                            destination.isQueue())
+                    .setReplicationProperty(ReplicaSupport.ORIGINAL_MESSAGE_DESTINATION_PROPERTY,
+                            destination.toString())
+                    .setReplicationProperty(ReplicaSupport.IS_ORIGINAL_MESSAGE_IN_XA_TRANSACTION_PROPERTY,
+                            originalTransactionId != null && originalTransactionId.isXATransaction());
+            if (destination.isTopic() && subscription instanceof DurableTopicSubscription) {
+                event.setReplicationProperty(ReplicaSupport.CLIENT_ID_PROPERTY, connectionContext.getClientId());
+                event.setReplicationProperty(ReplicaSupport.SUBSCRIPTION_NAME_PROPERTY,
+                        ((DurableTopicSubscription) subscription).getSubscriptionKey().getSubscriptionName());
+                event.setVersion(3);
+            }
+
+            enqueueReplicaEvent(connectionContext, event);
         } catch (Exception e) {
             logger.error("Failed to replicate ack messages [{} <-> {}] for consumer {}",
                     ack.getFirstMessageId(),
