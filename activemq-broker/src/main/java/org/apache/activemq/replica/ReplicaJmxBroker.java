@@ -27,6 +27,7 @@ import org.apache.activemq.broker.jmx.ManagedRegionBroker;
 import org.apache.activemq.broker.jmx.QueueView;
 import org.apache.activemq.broker.jmx.TopicView;
 import org.apache.activemq.broker.region.Destination;
+import org.apache.activemq.broker.region.RegionBroker;
 import org.apache.activemq.broker.region.Subscription;
 import org.apache.activemq.command.ActiveMQDestination;
 import org.apache.activemq.command.ConsumerInfo;
@@ -86,6 +87,21 @@ public class ReplicaJmxBroker extends BrokerFilter {
             subscription.setObjectName(null);
         }
         return subscription;
+    }
+
+    @Override
+    public void removeConsumer(ConnectionContext context, ConsumerInfo info) throws Exception {
+        if (ReplicaSupport.isReplicationDestination(info.getDestination()) && brokerService.isUseJmx() &&
+                replicaPolicy.isHideReplicationDestination()) {
+            ManagedRegionBroker managedRegionBroker = (ManagedRegionBroker) getAdaptor(ManagedRegionBroker.class);
+            if (managedRegionBroker != null) {
+                // Bypassing ManagedRegionBroker to avoid failures in unregisterSubscription
+                managedRegionBroker.getRegion(info.getDestination()).removeConsumer(context, info);
+            }
+        } else {
+            super.removeConsumer(context, info);
+        }
+
     }
 
     private void reregisterReplicationDestination(ActiveMQDestination replicationDestination, Destination destination) {
