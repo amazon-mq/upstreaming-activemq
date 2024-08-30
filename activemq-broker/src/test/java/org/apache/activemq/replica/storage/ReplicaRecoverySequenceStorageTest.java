@@ -24,9 +24,9 @@ import org.apache.activemq.broker.region.Queue;
 import org.apache.activemq.command.ActiveMQQueue;
 import org.apache.activemq.command.ActiveMQTextMessage;
 import org.apache.activemq.command.MessageId;
-import org.apache.activemq.replica.ReplicaInternalMessageProducer;
+import org.apache.activemq.replica.util.ReplicaInternalMessageProducer;
 import org.apache.activemq.replica.ReplicaReplicationQueueSupplier;
-import org.apache.activemq.replica.ReplicaSupport;
+import org.apache.activemq.replica.util.ReplicaSupport;
 import org.junit.Before;
 import org.junit.Test;
 

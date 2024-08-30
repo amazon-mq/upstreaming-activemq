@@ -22,7 +22,7 @@ import org.apache.activemq.command.ActiveMQTextMessage;
 import org.apache.activemq.command.MessageAck;
 import org.apache.activemq.command.MessageId;
 import org.apache.activemq.command.TransactionId;
-import org.apache.activemq.replica.ReplicaInternalMessageProducer;
+import org.apache.activemq.replica.util.ReplicaInternalMessageProducer;
 import org.apache.activemq.replica.ReplicaReplicationQueueSupplier;
 
 import java.util.ArrayList;

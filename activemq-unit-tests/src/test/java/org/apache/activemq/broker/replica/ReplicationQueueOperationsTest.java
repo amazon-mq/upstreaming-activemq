@@ -18,7 +18,7 @@ package org.apache.activemq.broker.replica;
 
 import org.apache.activemq.broker.jmx.QueueViewMBean;
 import org.apache.activemq.command.ActiveMQTextMessage;
-import org.apache.activemq.replica.ReplicaSupport;
+import org.apache.activemq.replica.util.ReplicaSupport;
 import org.apache.activemq.util.Wait;
 import org.junit.Test;
 import org.springframework.jms.core.JmsTemplate;

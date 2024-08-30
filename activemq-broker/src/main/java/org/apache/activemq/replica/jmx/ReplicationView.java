@@ -17,8 +17,7 @@
 package org.apache.activemq.replica.jmx;
 
 import org.apache.activemq.replica.ReplicaPlugin;
-import org.apache.activemq.replica.ReplicaRole;
-import org.apache.activemq.replica.ReplicaStatistics;
+import org.apache.activemq.replica.util.ReplicaRole;
 
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;

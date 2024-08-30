@@ -17,7 +17,6 @@
 package org.apache.activemq.replica;
 
 import org.apache.activemq.Service;
-import org.apache.activemq.broker.Broker;
 import org.apache.activemq.broker.ConnectionContext;
 import org.apache.activemq.broker.MutableBrokerFilter;
 import org.apache.activemq.broker.TransportConnector;
@@ -31,7 +30,18 @@ import org.apache.activemq.command.ConsumerInfo;
 import org.apache.activemq.command.MessageId;
 import org.apache.activemq.command.ProducerId;
 import org.apache.activemq.command.TransactionId;
+import org.apache.activemq.replica.jmx.ReplicaJmxBroker;
+import org.apache.activemq.replica.jmx.ReplicaStatistics;
+import org.apache.activemq.replica.replica.ReplicaBroker;
+import org.apache.activemq.replica.source.ReplicaSequencer;
+import org.apache.activemq.replica.source.ReplicaSourceBroker;
+import org.apache.activemq.replica.source.ReplicationMessageProducer;
 import org.apache.activemq.replica.storage.ReplicaRoleStorage;
+import org.apache.activemq.replica.util.DummyConnection;
+import org.apache.activemq.replica.util.ReplicaInternalMessageProducer;
+import org.apache.activemq.replica.util.ReplicaRole;
+import org.apache.activemq.replica.util.ReplicaSupport;
+import org.apache.activemq.replica.util.WebConsoleAccessController;
 import org.apache.activemq.util.IdGenerator;
 import org.apache.activemq.util.LongSequenceGenerator;
 import org.apache.activemq.util.ServiceStopper;

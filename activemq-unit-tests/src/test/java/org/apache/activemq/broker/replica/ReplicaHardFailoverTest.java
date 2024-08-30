@@ -23,7 +23,7 @@ import org.apache.activemq.command.ActiveMQDestination;
 import org.apache.activemq.command.ActiveMQQueue;
 import org.apache.activemq.command.ActiveMQTextMessage;
 import org.apache.activemq.replica.ReplicaPlugin;
-import org.apache.activemq.replica.ReplicaRole;
+import org.apache.activemq.replica.util.ReplicaRole;
 import org.apache.activemq.replica.jmx.ReplicationViewMBean;
 import org.junit.Test;
 

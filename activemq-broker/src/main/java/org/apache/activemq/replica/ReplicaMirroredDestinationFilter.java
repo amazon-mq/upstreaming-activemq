@@ -21,6 +21,8 @@ import org.apache.activemq.broker.ProducerBrokerExchange;
 import org.apache.activemq.broker.region.Destination;
 import org.apache.activemq.broker.region.DestinationFilter;
 import org.apache.activemq.command.Message;
+import org.apache.activemq.replica.util.ReplicaRole;
+import org.apache.activemq.replica.util.ReplicaSupport;
 
 public class ReplicaMirroredDestinationFilter extends DestinationFilter {
 
