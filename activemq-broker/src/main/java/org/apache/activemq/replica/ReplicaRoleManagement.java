@@ -18,6 +18,7 @@ package org.apache.activemq.replica;
 
 import org.apache.activemq.broker.ConnectionContext;
 import org.apache.activemq.command.TransactionId;
+import org.apache.activemq.replica.util.ReplicaRole;
 
 public interface ReplicaRoleManagement {
 

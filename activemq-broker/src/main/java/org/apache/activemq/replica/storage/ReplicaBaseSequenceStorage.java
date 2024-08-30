@@ -20,7 +20,7 @@ import org.apache.activemq.broker.Broker;
 import org.apache.activemq.broker.BrokerStoppedException;
 import org.apache.activemq.broker.ConnectionContext;
 import org.apache.activemq.command.ActiveMQTextMessage;
-import org.apache.activemq.replica.ReplicaInternalMessageProducer;
+import org.apache.activemq.replica.util.ReplicaInternalMessageProducer;
 import org.apache.activemq.replica.ReplicaReplicationQueueSupplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

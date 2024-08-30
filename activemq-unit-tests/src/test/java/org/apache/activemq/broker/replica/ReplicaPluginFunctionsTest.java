@@ -20,7 +20,7 @@ package org.apache.activemq.broker.replica;
 import org.apache.activemq.broker.jmx.QueueViewMBean;
 import org.apache.activemq.command.ActiveMQTextMessage;
 import org.apache.activemq.replica.ReplicaReplicationQueueSupplier;
-import org.apache.activemq.replica.ReplicaSupport;
+import org.apache.activemq.replica.util.ReplicaSupport;
 import org.apache.commons.lang.RandomStringUtils;
 import org.junit.Test;
 

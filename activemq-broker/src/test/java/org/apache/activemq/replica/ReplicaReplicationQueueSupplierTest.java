@@ -20,6 +20,7 @@ import org.apache.activemq.broker.Broker;
 import org.apache.activemq.broker.BrokerService;
 import org.apache.activemq.broker.ConnectionContext;
 import org.apache.activemq.command.ActiveMQQueue;
+import org.apache.activemq.replica.util.ReplicaSupport;
 import org.junit.Before;
 import org.junit.Test;
 
