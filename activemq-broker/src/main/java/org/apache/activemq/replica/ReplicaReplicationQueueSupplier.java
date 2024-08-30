@@ -20,6 +20,9 @@ import org.apache.activemq.broker.Broker;
 import org.apache.activemq.command.ActiveMQDestination;
 import org.apache.activemq.command.ActiveMQQueue;
 import org.apache.activemq.command.ActiveMQTopic;
+import org.apache.activemq.replica.source.ReplicaSourceBroker;
+import org.apache.activemq.replica.util.ActiveMQReplicaException;
+import org.apache.activemq.replica.util.ReplicaSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

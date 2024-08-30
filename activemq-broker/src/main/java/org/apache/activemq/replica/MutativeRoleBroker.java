@@ -23,6 +23,8 @@ import org.apache.activemq.command.ActiveMQQueue;
 import org.apache.activemq.command.ConnectionId;
 import org.apache.activemq.command.LocalTransactionId;
 import org.apache.activemq.command.TransactionId;
+import org.apache.activemq.replica.util.ReplicaRole;
+import org.apache.activemq.replica.util.ReplicaSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,13 +43,13 @@ public abstract class MutativeRoleBroker extends BrokerFilter {
 
     public abstract void start(ReplicaRole role) throws Exception;
 
-    abstract void stopBeforeRoleChange(boolean force) throws Exception;
+    protected abstract void stopBeforeRoleChange(boolean force) throws Exception;
 
-    abstract void startAfterRoleChange() throws Exception;
+    protected abstract void startAfterRoleChange() throws Exception;
 
-    abstract void brokerServiceStarted(ReplicaRole role);
+    public abstract void brokerServiceStarted(ReplicaRole role);
 
-    void updateBrokerState(ReplicaRole role) throws Exception {
+    public void updateBrokerState(ReplicaRole role) throws Exception {
         ConnectionContext connectionContext = createConnectionContext();
         LocalTransactionId tid = new LocalTransactionId(
                 new ConnectionId(ReplicaSupport.REPLICATION_PLUGIN_CONNECTION_ID),
@@ -64,29 +66,29 @@ public abstract class MutativeRoleBroker extends BrokerFilter {
         }
     }
 
-    void updateBrokerState(ConnectionContext connectionContext, TransactionId tid, ReplicaRole role) throws Exception {
+    protected void updateBrokerState(ConnectionContext connectionContext, TransactionId tid, ReplicaRole role) throws Exception {
         management.updateBrokerState(connectionContext, tid, role);
     }
 
-    void stopAllConnections() {
+    protected void stopAllConnections() {
         management.stopAllConnections();
     }
 
-    void startAllConnections() throws Exception {
+    protected void startAllConnections() throws Exception {
         management.startAllConnections();
     }
 
-    void removeReplicationQueues() throws Exception {
+    protected void removeReplicationQueues() throws Exception {
         for (String queueName : ReplicaSupport.DELETABLE_REPLICATION_DESTINATION_NAMES) {
             super.removeDestination(createConnectionContext(), new ActiveMQQueue(queueName), 1000);
         }
     }
 
-    void onStopSuccess() throws Exception {
+    protected void onStopSuccess() throws Exception {
         management.onStopSuccess();
     }
 
-    ConnectionContext createConnectionContext() {
+    protected ConnectionContext createConnectionContext() {
         ConnectionContext connectionContext = getAdminConnectionContext().copy();
         if (connectionContext.getTransactions() == null) {
             connectionContext.setTransactions(new ConcurrentHashMap<>());

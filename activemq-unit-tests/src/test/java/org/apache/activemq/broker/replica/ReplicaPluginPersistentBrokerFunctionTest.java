@@ -20,7 +20,7 @@ import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.ActiveMQXAConnectionFactory;
 import org.apache.activemq.broker.jmx.QueueViewMBean;
 import org.apache.activemq.command.ActiveMQTextMessage;
-import org.apache.activemq.replica.ReplicaSupport;
+import org.apache.activemq.replica.util.ReplicaSupport;
 import org.junit.Test;
 
 import javax.jms.Connection;

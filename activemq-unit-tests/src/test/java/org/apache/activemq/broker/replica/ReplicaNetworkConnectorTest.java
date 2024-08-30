@@ -26,7 +26,6 @@ import org.apache.activemq.broker.jmx.QueueViewMBean;
 import org.apache.activemq.network.DiscoveryNetworkConnector;
 import org.apache.activemq.network.NetworkBridge;
 import org.apache.activemq.network.NetworkConnector;
-import org.apache.activemq.replica.ReplicaSupport;
 import org.apache.activemq.util.Wait;
 import org.junit.Test;
 
