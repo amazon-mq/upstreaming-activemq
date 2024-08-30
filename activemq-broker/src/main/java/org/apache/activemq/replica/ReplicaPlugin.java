@@ -28,8 +28,12 @@ import org.apache.activemq.broker.region.policy.PolicyMap;
 import org.apache.activemq.command.ActiveMQDestination;
 import org.apache.activemq.command.ActiveMQQueue;
 import org.apache.activemq.command.ActiveMQTopic;
+import org.apache.activemq.replica.jmx.ReplicaJmxBroker;
+import org.apache.activemq.replica.jmx.ReplicaStatistics;
 import org.apache.activemq.replica.jmx.ReplicationJmxHelper;
 import org.apache.activemq.replica.jmx.ReplicationView;
+import org.apache.activemq.replica.util.ReplicaRole;
+import org.apache.activemq.replica.util.ReplicaSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

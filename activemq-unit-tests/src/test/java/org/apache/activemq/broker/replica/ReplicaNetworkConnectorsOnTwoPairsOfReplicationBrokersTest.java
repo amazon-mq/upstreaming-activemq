@@ -21,8 +21,7 @@ import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.broker.BrokerPlugin;
 import org.apache.activemq.broker.jmx.QueueViewMBean;
 import org.apache.activemq.replica.ReplicaPlugin;
-import org.apache.activemq.replica.ReplicaRole;
-import org.apache.activemq.replica.ReplicaSupport;
+import org.apache.activemq.replica.util.ReplicaRole;
 import org.junit.Test;
 
 import javax.jms.MessageConsumer;

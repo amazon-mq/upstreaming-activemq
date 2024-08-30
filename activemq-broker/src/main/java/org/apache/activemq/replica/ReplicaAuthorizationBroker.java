@@ -28,6 +28,8 @@ import org.apache.activemq.broker.region.Subscription;
 import org.apache.activemq.command.ActiveMQDestination;
 import org.apache.activemq.command.ConsumerInfo;
 import org.apache.activemq.command.ProducerInfo;
+import org.apache.activemq.replica.util.ActiveMQReplicaException;
+import org.apache.activemq.replica.util.ReplicaSupport;
 import org.apache.activemq.security.SecurityContext;
 
 import java.util.Arrays;
