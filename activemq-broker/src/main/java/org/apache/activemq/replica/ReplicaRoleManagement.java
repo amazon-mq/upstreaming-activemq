@@ -22,7 +22,7 @@ import org.apache.activemq.replica.util.ReplicaRole;
 
 public interface ReplicaRoleManagement {
 
-    void updateBrokerState(ConnectionContext connectionContext, TransactionId tid, ReplicaRole role) throws Exception;
+    void updateBrokerRole(ConnectionContext connectionContext, TransactionId tid, ReplicaRole role) throws Exception;
 
     void stopAllConnections();
 

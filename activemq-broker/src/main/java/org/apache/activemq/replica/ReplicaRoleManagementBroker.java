@@ -151,7 +151,7 @@ public class ReplicaRoleManagementBroker extends MutableBrokerFilter implements 
         setNext(nextByRole);
     }
 
-    public synchronized void updateBrokerState(ConnectionContext connectionContext, TransactionId tid, ReplicaRole role) throws Exception {
+    public synchronized void updateBrokerRole(ConnectionContext connectionContext, TransactionId tid, ReplicaRole role) throws Exception {
         replicaRoleStorage.enqueue(connectionContext, tid, role.name());
         this.role = role;
     }
