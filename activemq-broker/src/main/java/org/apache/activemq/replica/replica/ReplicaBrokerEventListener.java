@@ -675,9 +675,9 @@ public class ReplicaBrokerEventListener implements MessageListener {
     }
 
     private void failOver() throws Exception {
-        replicaBroker.updateBrokerState(ReplicaRole.ack_processed);
+        replicaBroker.updateBrokerRole(ReplicaRole.ack_processed);
         acknowledgeCallback.acknowledge(true);
-        replicaBroker.updateBrokerState(ReplicaRole.source);
+        replicaBroker.updateBrokerRole(ReplicaRole.source);
         replicaBroker.completeBeforeRoleChange();
     }
 

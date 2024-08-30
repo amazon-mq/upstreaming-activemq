@@ -105,7 +105,7 @@ public class ReplicaBroker extends MutativeRoleBroker {
         }
         logger.info("Stopping broker replication. Forced: [{}]", force);
 
-        updateBrokerState(ReplicaRole.source);
+        updateBrokerRole(ReplicaRole.source);
         completeBeforeRoleChange();
     }
 
@@ -259,7 +259,7 @@ public class ReplicaBroker extends MutativeRoleBroker {
         }
         if (initialRole == ReplicaRole.ack_processed) {
             if (isReadyToFailover()) {
-                updateBrokerState(ReplicaRole.source);
+                updateBrokerRole(ReplicaRole.source);
                 completeBeforeRoleChange();
                 return;
             }

@@ -49,7 +49,7 @@ public abstract class MutativeRoleBroker extends BrokerFilter {
 
     public abstract void brokerServiceStarted(ReplicaRole role);
 
-    public void updateBrokerState(ReplicaRole role) throws Exception {
+    public void updateBrokerRole(ReplicaRole role) throws Exception {
         ConnectionContext connectionContext = createConnectionContext();
         LocalTransactionId tid = new LocalTransactionId(
                 new ConnectionId(ReplicaSupport.REPLICATION_PLUGIN_CONNECTION_ID),
@@ -57,7 +57,7 @@ public abstract class MutativeRoleBroker extends BrokerFilter {
 
         super.beginTransaction(connectionContext, tid);
         try {
-            updateBrokerState(connectionContext, tid, role);
+            updateBrokerRole(connectionContext, tid, role);
             super.commitTransaction(connectionContext, tid, true);
         } catch (Exception e) {
             super.rollbackTransaction(connectionContext, tid);
@@ -66,8 +66,8 @@ public abstract class MutativeRoleBroker extends BrokerFilter {
         }
     }
 
-    protected void updateBrokerState(ConnectionContext connectionContext, TransactionId tid, ReplicaRole role) throws Exception {
-        management.updateBrokerState(connectionContext, tid, role);
+    protected void updateBrokerRole(ConnectionContext connectionContext, TransactionId tid, ReplicaRole role) throws Exception {
+        management.updateBrokerRole(connectionContext, tid, role);
     }
 
     protected void stopAllConnections() {
