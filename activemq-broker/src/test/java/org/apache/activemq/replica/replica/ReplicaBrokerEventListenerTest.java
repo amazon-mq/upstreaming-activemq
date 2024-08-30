@@ -41,9 +41,6 @@ import org.apache.activemq.command.XATransactionId;
 import org.apache.activemq.replica.ReplicaPolicy;
 import org.apache.activemq.replica.ReplicaReplicationQueueSupplier;
 import org.apache.activemq.replica.jmx.ReplicaStatistics;
-import org.apache.activemq.replica.replica.PeriodAcknowledge;
-import org.apache.activemq.replica.replica.ReplicaBroker;
-import org.apache.activemq.replica.replica.ReplicaBrokerEventListener;
 import org.apache.activemq.replica.util.ReplicaEvent;
 import org.apache.activemq.replica.util.ReplicaEventSerializer;
 import org.apache.activemq.replica.util.ReplicaEventType;
@@ -977,7 +974,7 @@ public class ReplicaBrokerEventListenerTest {
 
         listener.onMessage(replicaEventMessage);
 
-        verify(replicaBroker).updateBrokerState(eq(ReplicaRole.source));
+        verify(replicaBroker).updateBrokerRole(eq(ReplicaRole.source));
         verify(replicaBroker).completeBeforeRoleChange();
     }
 

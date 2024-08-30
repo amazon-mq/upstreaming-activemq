@@ -161,7 +161,7 @@ public class ReplicaSourceBroker extends MutativeRoleBroker {
 
 
     private void stopBeforeForcedRoleChange() throws Exception {
-        updateBrokerState(ReplicaRole.replica);
+        updateBrokerRole(ReplicaRole.replica);
         completeBeforeRoleChange();
     }
 
@@ -394,7 +394,7 @@ public class ReplicaSourceBroker extends MutativeRoleBroker {
                             .setEventData(eventSerializer.serializeReplicationData(null))
             );
 
-            updateBrokerState(connectionContext, tid, ReplicaRole.await_ack);
+            updateBrokerRole(connectionContext, tid, ReplicaRole.await_ack);
             super.commitTransaction(connectionContext, tid, true);
         } catch (Exception e) {
             super.rollbackTransaction(connectionContext, tid);
@@ -637,7 +637,7 @@ public class ReplicaSourceBroker extends MutativeRoleBroker {
                 }
 
                 if (failover) {
-                    updateBrokerState(connectionContext, transactionId, ReplicaRole.replica);
+                    updateBrokerRole(connectionContext, transactionId, ReplicaRole.replica);
                 }
 
                 super.commitTransaction(connectionContext, transactionId, true);
