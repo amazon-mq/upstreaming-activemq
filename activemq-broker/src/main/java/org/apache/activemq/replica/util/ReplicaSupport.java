@@ -63,6 +63,7 @@ public class ReplicaSupport {
     public static final String MESSAGE_IDS_PROPERTY = "MessageIdsProperty";
     public static final String SEQUENCE_PROPERTY = "sequenceProperty";
     public static final String VERSION_PROPERTY = "versionProperty";
+    public static final String DESTINATIONS_PROPERTY = "destinationsProperty";
 
     public static final Object INTERMEDIATE_QUEUE_MUTEX = new Object();
 

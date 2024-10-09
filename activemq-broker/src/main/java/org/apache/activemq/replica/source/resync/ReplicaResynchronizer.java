@@ -37,13 +37,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 public class ReplicaResynchronizer {
 
     private static final String RESYNC_CONSUMER_CLIENT_ID = "DUMMY_RESYNC_CONSUMER";
+    private static final String DUMMY_DESTINATION = "DUMMY_DESTINATION";
     private final Logger logger = LoggerFactory.getLogger(ReplicaResynchronizer.class);
     private final Broker broker;
     private final ReplicaEventReplicator replicator;
@@ -77,20 +78,20 @@ public class ReplicaResynchronizer {
 
         ResyncInfo restoreResyncInfo = storage.initialize(connectionContext);
 
-        List<ActiveMQDestination> destinations = broker.getDurableDestinations().stream().sorted((v1, v2) -> {
-            int result = Boolean.compare(v1.isQueue(), v1.isQueue());
-            if (result != 0) {
-                return result;
-            }
-            return v1.getPhysicalName().compareTo(v2.getPhysicalName());
-        }).collect(Collectors.toList());
+        List<ActiveMQDestination> destinations = broker.getDurableDestinations().stream()
+                .filter(Predicate.not(ReplicaSupport::isReplicationDestination))
+                .filter(Predicate.not(ReplicaSupport::isAdvisoryDestination))
+                .sorted((v1, v2) -> {
+                    int result = Boolean.compare(v1.isQueue(), v1.isQueue());
+                    if (result != 0) {
+                        return result;
+                    }
+                    return v1.getPhysicalName().compareTo(v2.getPhysicalName());
+                })
+                .collect(Collectors.toList());
 
         boolean found = false;
         for (ActiveMQDestination destination : destinations) {
-            if (ReplicaSupport.isReplicationDestination(destination)) {
-                continue;
-            }
-
             MessageId restoreMessageId = null;
             if (restoreResyncInfo != null && !found) {
                 if (restoreResyncInfo.getDestination().equals(destination)) {
@@ -111,8 +112,21 @@ public class ReplicaResynchronizer {
             }
         }
 
+        enqueueResyncDestinationsEvent(connectionContext, new ActiveMQQueue(DUMMY_DESTINATION), destinations);
+        enqueueResyncDestinationsEvent(connectionContext, new ActiveMQTopic(DUMMY_DESTINATION), destinations);
+
         broker.removeDestination(connectionContext, destinationSupplier.getResynchronizationQueue(), 1000);
         management.updateBrokerRole(connectionContext, null, ReplicaRole.source);
+    }
+
+    private void enqueueResyncDestinationsEvent(ConnectionContext connectionContext, ActiveMQDestination destinationType,
+            List<ActiveMQDestination> destinations) throws Exception {
+        replicator.enqueueResyncDestinationsEvent(connectionContext, destinationType,
+                destinations.stream()
+                        .filter(d -> destinationType.getClass().isInstance(d))
+                        .map(ActiveMQDestination::toString)
+                        .collect(Collectors.toList())
+        );
     }
 
     private void sendResetMessage(ConnectionContext connectionContext) throws Exception {

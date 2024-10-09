@@ -37,6 +37,7 @@ public enum ReplicaEventType {
     FAIL_OVER,
     HEART_BEAT,
     RESET,
+    RESYNC_DESTINATIONS,
     ;
 
     public static final String EVENT_TYPE_PROPERTY = "ActiveMQReplicationEventType";
