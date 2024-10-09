@@ -32,7 +32,7 @@ public class ReplicaSequenceStorage extends ReplicaBaseSequenceStorage {
     }
 
     public String initialize(ConnectionContext connectionContext) throws Exception {
-        List<ActiveMQTextMessage> allMessages = super.initializeBase(connectionContext, true);
+        List<ActiveMQTextMessage> allMessages = super.initialize(connectionContext, true);
 
         if (allMessages.isEmpty()) {
             return null;
