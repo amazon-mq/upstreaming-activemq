@@ -68,6 +68,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Predicate;
+import java.util.stream.Collectors;
 
 import static java.util.Objects.requireNonNull;
 
@@ -275,6 +277,15 @@ public class ReplicaBrokerEventListener implements MessageListener {
                 logger.trace("Processing replicated destination deletion");
                 deleteDestination((ActiveMQDestination) deserializedData);
                 return;
+            case RESYNC_DESTINATIONS:
+                try {
+                    resyncDestinations((ActiveMQDestination) deserializedData,
+                            (List<String>) message.getObjectProperty(ReplicaSupport.DESTINATIONS_PROPERTY));
+                } catch (Exception e) {
+                    logger.error("Failed to extract property to resync destinations [{}]", deserializedData, e);
+                    throw new Exception(e);
+                }
+                return;
             case MESSAGE_SEND:
                 logger.trace("Processing replicated message send");
                 sendMessage((ActiveMQMessage) deserializedData, transactionId);
@@ -415,6 +426,28 @@ public class ReplicaBrokerEventListener implements MessageListener {
         } catch (Exception e) {
             logger.error("Unable to remove destination [{}]", destination, e);
             throw e;
+        }
+    }
+
+    private void resyncDestinations(ActiveMQDestination destinationType, List<String> sourceDestinations) throws Exception {
+        List<ActiveMQDestination> destinationsToDelete = broker.getDurableDestinations().stream()
+                .filter(Predicate.not(ReplicaSupport::isReplicationDestination))
+                .filter(Predicate.not(ReplicaSupport::isAdvisoryDestination))
+                .filter(d -> destinationType.getClass().isInstance(d))
+                .filter(d -> !sourceDestinations.contains(d.toString()))
+                .collect(Collectors.toList());
+        if (destinationsToDelete.isEmpty()) {
+            return;
+        }
+
+        logger.info("Resyncing destinations. Removing: [{}]", destinationsToDelete);
+        for (ActiveMQDestination destination : destinationsToDelete) {
+            try {
+                broker.removeDestination(connectionContext, destination, 1000);
+            } catch (Exception e) {
+                logger.error("Unable to remove destination [{}]", destination, e);
+                throw e;
+            }
         }
     }
 
