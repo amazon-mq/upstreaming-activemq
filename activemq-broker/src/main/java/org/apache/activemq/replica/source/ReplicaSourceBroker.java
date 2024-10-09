@@ -63,17 +63,19 @@ public class ReplicaSourceBroker extends MutativeRoleBroker {
     private final ReplicaEventReplicator replicaEventReplicator;
     private final ReplicaSequencer replicaSequencer;
     private final ReplicaReplicationDestinationSupplier destinationSupplier;
+    private final ReplicaResynchronizer replicaResynchronizer;
     private final ReplicaPolicy replicaPolicy;
     private final ReplicaAckHelper replicaAckHelper;
     private ScheduledFuture<?> heartBeatScheduledFuture;
 
     public ReplicaSourceBroker(Broker broker, ReplicaRoleManagement management, ReplicaEventReplicator replicaEventReplicator,
             ReplicaSequencer replicaSequencer, ReplicaReplicationDestinationSupplier destinationSupplier,
-            ReplicaPolicy replicaPolicy) {
+            ReplicaResynchronizer replicaResynchronizer, ReplicaPolicy replicaPolicy) {
         super(broker, management);
         this.replicaEventReplicator = replicaEventReplicator;
         this.replicaSequencer = replicaSequencer;
         this.destinationSupplier = destinationSupplier;
+        this.replicaResynchronizer = replicaResynchronizer;
         this.replicaPolicy = replicaPolicy;
         this.replicaAckHelper = new ReplicaAckHelper(next);
     }
@@ -82,16 +84,24 @@ public class ReplicaSourceBroker extends MutativeRoleBroker {
     public void start(ReplicaRole role) throws Exception {
         logger.info("Starting Source broker. " + (role == ReplicaRole.await_ack ? " Awaiting ack." : ""));
 
+        if (role == ReplicaRole.in_resync) {
+            removeReplicationQueues();
+        }
         initQueueProvider();
         replicaEventReplicator.initialize();
         replicaSequencer.initialize();
-        initializeHeartBeatSender();
         replicaEventReplicator.ensureDestinationsAreReplicated();
+
+        if (role == ReplicaRole.in_resync) {
+            replicaResynchronizer.resynchronize();
+        }
+
+        initializeHeartBeatSender();
     }
 
     @Override
     public void brokerServiceStarted(ReplicaRole role) {
-        if (role == ReplicaRole.await_ack) {
+        if (role == ReplicaRole.await_ack || role == ReplicaRole.in_resync) {
             stopAllConnections();
         }
     }
