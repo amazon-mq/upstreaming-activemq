@@ -376,7 +376,7 @@ public class ReplicaSourceBrokerTest {
         assertThat(replicaMessage.getType()).isEqualTo("ReplicaEvent");
         assertThat(replicaMessage.getDestination().getPhysicalName()).isEqualTo(ReplicaSupport.INTERMEDIATE_REPLICATION_QUEUE_NAME);
         assertThat(replicaMessage.getProperty(ReplicaEventType.EVENT_TYPE_PROPERTY)).isEqualTo(ReplicaEventType.REMOVE_DURABLE_CONSUMER.name());
-        assertThat(replicaMessage.getProperty(ReplicaSupport.VERSION_PROPERTY)).isEqualTo(ReplicaSupport.CURRENT_VERSION);
+        assertThat(replicaMessage.getProperty(ReplicaSupport.VERSION_PROPERTY)).isEqualTo(2);
 
         final ConsumerInfo ackMessage = (ConsumerInfo) eventSerializer.deserializeMessageData(replicaMessage.getContent());
         assertThat(ackMessage.getDestination()).isEqualTo(testTopic);
