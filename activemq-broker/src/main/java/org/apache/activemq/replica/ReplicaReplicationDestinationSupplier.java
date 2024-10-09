@@ -32,7 +32,7 @@ import java.util.concurrent.TimeUnit;
 
 import static java.util.Objects.requireNonNull;
 
-public class ReplicaReplicationQueueSupplier {
+public class ReplicaReplicationDestinationSupplier {
 
     private final Logger logger = LoggerFactory.getLogger(ReplicaSourceBroker.class);
     private final CountDownLatch initializationLatch = new CountDownLatch(1);
@@ -45,7 +45,7 @@ public class ReplicaReplicationQueueSupplier {
     private ActiveMQTopic roleAdvisoryTopic = null; // memoized
     private final Broker broker;
 
-    public ReplicaReplicationQueueSupplier(final Broker broker) {
+    public ReplicaReplicationDestinationSupplier(final Broker broker) {
         this.broker = requireNonNull(broker);
     }
 

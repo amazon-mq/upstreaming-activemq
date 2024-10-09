@@ -19,7 +19,7 @@ package org.apache.activemq.broker.replica;
 
 import org.apache.activemq.broker.jmx.QueueViewMBean;
 import org.apache.activemq.command.ActiveMQTextMessage;
-import org.apache.activemq.replica.ReplicaReplicationQueueSupplier;
+import org.apache.activemq.replica.ReplicaReplicationDestinationSupplier;
 import org.apache.activemq.replica.util.ReplicaSupport;
 import org.apache.commons.lang.RandomStringUtils;
 import org.junit.Test;
@@ -38,7 +38,7 @@ public class ReplicaPluginFunctionsTest extends ReplicaPluginTestSupport {
     protected XAConnection firstBrokerXAConnection;
     protected XAConnection secondBrokerXAConnection;
 
-    protected ReplicaReplicationQueueSupplier replicationQueueSupplier;
+    protected ReplicaReplicationDestinationSupplier replicationQueueSupplier;
     static final int MAX_BATCH_LENGTH = 500;
     static final int MAX_BATCH_SIZE = 5_000_000; // 5 Mb
     static final int CONSUMER_PREFETCH_LIMIT = 10_000;
@@ -58,7 +58,7 @@ public class ReplicaPluginFunctionsTest extends ReplicaPluginTestSupport {
         secondBrokerXAConnection = secondBrokerXAConnectionFactory.createXAConnection();
         secondBrokerXAConnection.start();
 
-        replicationQueueSupplier = new ReplicaReplicationQueueSupplier(secondBroker.getBroker());
+        replicationQueueSupplier = new ReplicaReplicationDestinationSupplier(secondBroker.getBroker());
     }
 
     @Override

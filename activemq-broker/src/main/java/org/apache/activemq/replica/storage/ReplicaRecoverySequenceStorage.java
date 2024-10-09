@@ -23,16 +23,16 @@ import org.apache.activemq.command.MessageAck;
 import org.apache.activemq.command.MessageId;
 import org.apache.activemq.command.TransactionId;
 import org.apache.activemq.replica.util.ReplicaInternalMessageProducer;
-import org.apache.activemq.replica.ReplicaReplicationQueueSupplier;
+import org.apache.activemq.replica.ReplicaReplicationDestinationSupplier;
 
 import java.util.ArrayList;
 import java.util.List;
 
 public class ReplicaRecoverySequenceStorage extends ReplicaBaseSequenceStorage {
 
-    public ReplicaRecoverySequenceStorage(Broker broker, ReplicaReplicationQueueSupplier queueProvider,
+    public ReplicaRecoverySequenceStorage(Broker broker, ReplicaReplicationDestinationSupplier destinationSupplier,
             ReplicaInternalMessageProducer replicaInternalMessageProducer, String sequenceName) {
-        super(broker, queueProvider, replicaInternalMessageProducer, sequenceName);
+        super(broker, destinationSupplier, replicaInternalMessageProducer, sequenceName);
     }
 
     public List<String> initialize(ConnectionContext connectionContext) throws Exception {

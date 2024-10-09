@@ -33,11 +33,8 @@ import org.apache.activemq.command.Message;
 import org.apache.activemq.command.MessageAck;
 import org.apache.activemq.command.MessageId;
 import org.apache.activemq.replica.ReplicaPolicy;
-import org.apache.activemq.replica.ReplicaReplicationQueueSupplier;
+import org.apache.activemq.replica.ReplicaReplicationDestinationSupplier;
 import org.apache.activemq.replica.jmx.ReplicaStatistics;
-import org.apache.activemq.replica.source.ReplicaCompactor;
-import org.apache.activemq.replica.source.ReplicaSequencer;
-import org.apache.activemq.replica.source.ReplicationMessageProducer;
 import org.apache.activemq.replica.util.ReplicaEvent;
 import org.apache.activemq.replica.util.ReplicaEventSerializer;
 import org.apache.activemq.replica.util.ReplicaEventType;
@@ -71,7 +68,7 @@ public class ReplicaSequencerTest {
     private static final Integer MAXIMUM_MESSAGES = new ReplicaPolicy().getCompactorAdditionalMessagesLimit();
     private final ConnectionContext connectionContext = mock(ConnectionContext.class);
     private final Broker broker = mock(Broker.class);
-    private final ReplicaReplicationQueueSupplier queueProvider = mock(ReplicaReplicationQueueSupplier.class);
+    private final ReplicaReplicationDestinationSupplier queueProvider = mock(ReplicaReplicationDestinationSupplier.class);
     private final ReplicaInternalMessageProducer replicaInternalMessageProducer = mock(ReplicaInternalMessageProducer.class);
     private final ReplicationMessageProducer replicationMessageProducer = mock(ReplicationMessageProducer.class);
 

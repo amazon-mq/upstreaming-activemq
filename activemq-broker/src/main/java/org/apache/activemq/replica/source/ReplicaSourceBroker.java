@@ -45,7 +45,7 @@ import org.apache.activemq.replica.util.ReplicaEvent;
 import org.apache.activemq.replica.util.ReplicaEventSerializer;
 import org.apache.activemq.replica.util.ReplicaEventType;
 import org.apache.activemq.replica.ReplicaPolicy;
-import org.apache.activemq.replica.ReplicaReplicationQueueSupplier;
+import org.apache.activemq.replica.ReplicaReplicationDestinationSupplier;
 import org.apache.activemq.replica.util.ReplicaRole;
 import org.apache.activemq.replica.ReplicaRoleManagement;
 import org.apache.activemq.replica.util.ReplicaSupport;
@@ -76,7 +76,7 @@ public class ReplicaSourceBroker extends MutativeRoleBroker {
 
     private final ReplicationMessageProducer replicationMessageProducer;
     private final ReplicaSequencer replicaSequencer;
-    private final ReplicaReplicationQueueSupplier queueProvider;
+    private final ReplicaReplicationDestinationSupplier destinationSupplier;
     private final ReplicaPolicy replicaPolicy;
     private final ReplicaAckHelper replicaAckHelper;
     private ScheduledFuture<?> heartBeatScheduledFuture;
@@ -84,12 +84,12 @@ public class ReplicaSourceBroker extends MutativeRoleBroker {
     final DestinationMap destinationsToReplicate = new DestinationMap();
 
     public ReplicaSourceBroker(Broker broker, ReplicaRoleManagement management, ReplicationMessageProducer replicationMessageProducer,
-            ReplicaSequencer replicaSequencer, ReplicaReplicationQueueSupplier queueProvider,
+            ReplicaSequencer replicaSequencer, ReplicaReplicationDestinationSupplier destinationSupplier,
             ReplicaPolicy replicaPolicy) {
         super(broker, management);
         this.replicationMessageProducer = replicationMessageProducer;
         this.replicaSequencer = replicaSequencer;
-        this.queueProvider = queueProvider;
+        this.destinationSupplier = destinationSupplier;
         this.replicaPolicy = replicaPolicy;
         this.replicaAckHelper = new ReplicaAckHelper(next);
     }
@@ -176,8 +176,8 @@ public class ReplicaSourceBroker extends MutativeRoleBroker {
     }
 
     private void initQueueProvider() {
-        queueProvider.initialize();
-        queueProvider.initializeSequenceQueue();
+        destinationSupplier.initialize();
+        destinationSupplier.initializeSequenceQueue();
     }
 
     private void ensureDestinationsAreReplicated() throws Exception {

@@ -20,7 +20,7 @@ import org.apache.activemq.broker.Broker;
 import org.apache.activemq.broker.ConnectionContext;
 import org.apache.activemq.command.ActiveMQTextMessage;
 import org.apache.activemq.replica.util.ReplicaInternalMessageProducer;
-import org.apache.activemq.replica.ReplicaReplicationQueueSupplier;
+import org.apache.activemq.replica.ReplicaReplicationDestinationSupplier;
 import org.apache.activemq.replica.util.ReplicaRole;
 import org.apache.activemq.util.IdGenerator;
 import org.slf4j.Logger;
@@ -32,9 +32,9 @@ public class ReplicaRoleStorage extends ReplicaBaseStorage {
 
     private final Logger logger = LoggerFactory.getLogger(ReplicaRoleStorage.class);
 
-    public ReplicaRoleStorage(Broker broker, ReplicaReplicationQueueSupplier queueProvider,
+    public ReplicaRoleStorage(Broker broker, ReplicaReplicationDestinationSupplier destinationSupplier,
             ReplicaInternalMessageProducer replicaInternalMessageProducer) {
-        super(broker, replicaInternalMessageProducer, queueProvider.getRoleQueue(),  "ReplicationPlugin.ReplicaFailOverStorage", null);
+        super(broker, replicaInternalMessageProducer, destinationSupplier.getRoleQueue(),  "ReplicationPlugin.ReplicaFailOverStorage", null);
         this.replicationProducerId.setConnectionId(new IdGenerator().generateId());
     }
 
