@@ -22,12 +22,14 @@ import org.apache.activemq.broker.ConsumerBrokerExchange;
 import org.apache.activemq.broker.region.MessageReference;
 import org.apache.activemq.broker.region.PrefetchSubscription;
 import org.apache.activemq.broker.region.Queue;
+import org.apache.activemq.command.ActiveMQMessage;
 import org.apache.activemq.command.ActiveMQQueue;
 import org.apache.activemq.command.ActiveMQTextMessage;
 import org.apache.activemq.command.ConnectionId;
 import org.apache.activemq.command.ConsumerId;
 import org.apache.activemq.command.ConsumerInfo;
 import org.apache.activemq.command.LocalTransactionId;
+import org.apache.activemq.command.Message;
 import org.apache.activemq.command.MessageAck;
 import org.apache.activemq.command.MessageId;
 import org.apache.activemq.command.ProducerId;
@@ -52,7 +54,7 @@ public abstract class ReplicaBaseStorage {
     private final Logger logger = LoggerFactory.getLogger(ReplicaBaseStorage.class);
 
     protected final ProducerId replicationProducerId = new ProducerId();
-    private final LongSequenceGenerator eventMessageIdGenerator = new LongSequenceGenerator();
+    protected final LongSequenceGenerator eventMessageIdGenerator = new LongSequenceGenerator();
 
     protected Broker broker;
     protected ReplicaInternalMessageProducer replicaInternalMessageProducer;
@@ -73,7 +75,7 @@ public abstract class ReplicaBaseStorage {
         replicationProducerId.setConnectionId(new IdGenerator().generateId());
     }
 
-    protected List<ActiveMQTextMessage> initializeBase(ConnectionContext connectionContext, boolean keepOnlyOneMessage) throws Exception {
+    protected List<Message> initializeBase(ConnectionContext connectionContext, boolean keepOnlyOneMessage) throws Exception {
         queue = broker.getDestinations(destination).stream().findFirst()
                 .map(DestinationExtractor::extractQueue).orElseThrow();
         ConnectionId connectionId = new ConnectionId(new IdGenerator(idGeneratorPrefix).generateId());
@@ -89,9 +91,7 @@ public abstract class ReplicaBaseStorage {
         subscription = (PrefetchSubscription) broker.addConsumer(connectionContext, consumerInfo);
         queue.iterate();
 
-        List<ActiveMQTextMessage> allMessages = subscription.getDispatched().stream().map(MessageReference::getMessage)
-                .map(ActiveMQTextMessage.class::cast).collect(Collectors.toList());
-
+        List<Message> allMessages = subscription.getDispatched().stream().map(MessageReference::getMessage).collect(Collectors.toList());
 
         if (keepOnlyOneMessage) {
             return keepOnlyOneMessage(connectionContext, allMessages);
@@ -100,7 +100,7 @@ public abstract class ReplicaBaseStorage {
 
     }
 
-    private List<ActiveMQTextMessage> keepOnlyOneMessage(ConnectionContext connectionContext, List<ActiveMQTextMessage> allMessages) throws Exception {
+    private List<Message> keepOnlyOneMessage(ConnectionContext connectionContext, List<Message> allMessages) throws Exception {
         if (allMessages.size() < 2) {
             return allMessages;
         }
@@ -148,28 +148,7 @@ public abstract class ReplicaBaseStorage {
         broker.acknowledge(consumerExchange, ack);
     }
 
-    public void enqueue(ConnectionContext connectionContext, TransactionId tid, String message) throws Exception {
-        // before enqueue message, we acknowledge all messages currently in queue.
-        acknowledgeAll(connectionContext, tid);
-
-        send(connectionContext, tid, message,
-                new MessageId(replicationProducerId, eventMessageIdGenerator.getNextSequenceId()));
-    }
-
-    public void send(ConnectionContext connectionContext, TransactionId tid, String message, MessageId messageId) throws Exception {
-        ActiveMQTextMessage seqMessage = new ActiveMQTextMessage();
-        seqMessage.setText(message);
-        seqMessage.setTransactionId(tid);
-        seqMessage.setDestination(destination);
-        seqMessage.setMessageId(messageId);
-        seqMessage.setProducerId(replicationProducerId);
-        seqMessage.setPersistent(true);
-        seqMessage.setResponseRequired(false);
-
-        send(connectionContext, seqMessage);
-    }
-
-    public void send(ConnectionContext connectionContext, ActiveMQTextMessage seqMessage) throws Exception {
+    public void send(ConnectionContext connectionContext, ActiveMQMessage seqMessage) throws Exception {
         replicaInternalMessageProducer.sendForcingFlowControl(connectionContext, seqMessage);
     }
 
