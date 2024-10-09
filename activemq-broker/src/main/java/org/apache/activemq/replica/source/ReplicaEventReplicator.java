@@ -450,6 +450,20 @@ public class ReplicaEventReplicator {
         );
     }
 
+    void enqueueResetEvent(ConnectionContext connectionContext, TransactionId tid) {
+        try {
+            enqueueReplicaEvent(
+                    connectionContext,
+                    new ReplicaEvent()
+                            .setEventType(ReplicaEventType.RESET)
+                            .setTransactionId(tid)
+                            .setEventData(eventSerializer.serializeReplicationData(null))
+            );
+        } catch (Exception e) {
+            logger.error("Failed to send heart beat message", e);
+        }
+    }
+
     private void enqueueReplicaEvent(ConnectionContext connectionContext, ReplicaEvent event) throws Exception {
         if (isReplicaContext(connectionContext)) {
             return;
