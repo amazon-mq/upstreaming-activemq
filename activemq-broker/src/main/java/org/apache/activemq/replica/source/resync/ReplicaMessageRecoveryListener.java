@@ -62,7 +62,7 @@ class ReplicaMessageRecoveryListener implements MessageRecoveryListener {
     @Override
     public boolean recoverMessage(Message message) throws Exception {
         if (++processedCount % 10000 == 0) {
-            logger.info("Progress: " + processedCount);
+            logger.info("Resynchronization progress: " + processedCount);
         }
 
         if (restoreMessageId != null && !foundMessage) {
@@ -88,7 +88,7 @@ class ReplicaMessageRecoveryListener implements MessageRecoveryListener {
             }
         } catch (Exception e) {
             broker.rollbackTransaction(connectionContext, tid);
-            logger.error("Failed", e);
+            logger.error("Failed to process next message", e);
             throw e;
         }
         return true;
