@@ -19,17 +19,14 @@ package org.apache.activemq.replica.storage;
 import org.apache.activemq.broker.Broker;
 import org.apache.activemq.broker.BrokerStoppedException;
 import org.apache.activemq.broker.ConnectionContext;
+import org.apache.activemq.command.ActiveMQMessage;
 import org.apache.activemq.command.ActiveMQTextMessage;
 import org.apache.activemq.replica.util.ReplicaInternalMessageProducer;
 import org.apache.activemq.replica.ReplicaReplicationDestinationSupplier;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import static java.util.Objects.requireNonNull;
 
-public abstract class ReplicaBaseSequenceStorage extends ReplicaBaseStorage {
-
-    private final Logger logger = LoggerFactory.getLogger(ReplicaBaseSequenceStorage.class);
+public abstract class ReplicaBaseSequenceStorage extends ReplicaBaseTextStorage {
 
     static final String SEQUENCE_NAME_PROPERTY = "SequenceName";
     private final String sequenceName;
@@ -54,7 +51,7 @@ public abstract class ReplicaBaseSequenceStorage extends ReplicaBaseStorage {
     }
 
     @Override
-    public void send(ConnectionContext connectionContext, ActiveMQTextMessage seqMessage) throws Exception {
+    public void send(ConnectionContext connectionContext, ActiveMQMessage seqMessage) throws Exception {
         seqMessage.setStringProperty(SEQUENCE_NAME_PROPERTY, sequenceName);
         super.send(connectionContext, seqMessage);
     }
