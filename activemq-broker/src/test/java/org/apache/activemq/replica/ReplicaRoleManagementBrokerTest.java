@@ -106,7 +106,7 @@ public class ReplicaRoleManagementBrokerTest {
 
         replicaRoleManagementBroker.start();
 
-        verify(sourceBroker).start(any(), anyBoolean());
+        verify(replicaBroker).start(any(), anyBoolean());
         verify(sourceBroker, never()).start();
     }
 
@@ -130,7 +130,7 @@ public class ReplicaRoleManagementBrokerTest {
 
         replicaRoleManagementBroker.start();
 
-        verify(sourceBroker).start(any(), anyBoolean());
+        verify(replicaBroker).start(any(), anyBoolean());
         verify(sourceBroker, never()).start();
     }
 
