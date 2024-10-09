@@ -257,7 +257,7 @@ public class ReplicationEventHandlingTest extends ReplicaPluginTestSupport {
             @Override
             public Broker installPlugin(final Broker broker) {
                 nextBrokerSpy = spy(broker);
-                return new ReplicaRoleManagementBroker(new ReplicaJmxBroker(nextBrokerSpy, replicaPolicy), replicaPolicy, ReplicaRole.replica, new ReplicaStatistics());
+                return new ReplicaRoleManagementBroker(new ReplicaJmxBroker(nextBrokerSpy, replicaPolicy), replicaPolicy, ReplicaRole.replica, false, new ReplicaStatistics());
             }
         };
         replicaPlugin.setRole(ReplicaRole.replica);
