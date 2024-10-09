@@ -283,9 +283,87 @@ public class ReplicaResynchronizationTest extends ReplicaPluginTestSupport {
         firstBrokerSession.close();
         secondBrokerSession.close();
     }
+    @Test
+    public void testRestoreProcess() throws Exception {
+        Session firstBrokerSession = firstBrokerConnection.createSession(false, Session.CLIENT_ACKNOWLEDGE);
+        MessageProducer firstBrokerProducer = firstBrokerSession.createProducer(destination);
+
+        int numberOfMessages = 1000;
+        for (int i = 0; i < numberOfMessages; i++) {
+            ActiveMQTextMessage message = new ActiveMQTextMessage();
+            message.setText(Integer.toString(i));
+            firstBrokerProducer.send(message);
+        }
+
+        waitForCondition(() -> {
+            try {
+                QueueViewMBean secondBrokerDestinationQueue = getQueueView(secondBroker, destination.getPhysicalName());
+                assertEquals(numberOfMessages, secondBrokerDestinationQueue.getEnqueueCount());
+            } catch (Exception urlException) {
+                urlException.printStackTrace();
+                throw new RuntimeException(urlException);
+            }
+        });
+
+        Session secondBrokerSession = secondBrokerConnection.createSession(false, Session.CLIENT_ACKNOWLEDGE);
+        MessageConsumer secondBrokerConsumer = secondBrokerSession.createConsumer(destination);
+
+        for (int i = 0; i < numberOfMessages; i++) {
+            Message receivedMessage = secondBrokerConsumer.receive(LONG_TIMEOUT);
+            assertNotNull(receivedMessage);
+            assertTrue(receivedMessage instanceof TextMessage);
+            assertEquals(Integer.toString(i), ((TextMessage) receivedMessage).getText());
+
+            receivedMessage.acknowledge();
+        }
+
+        MBeanServer secondBrokerMbeanServer = secondBroker.getManagementContext().getMBeanServer();
+        ObjectName secondBrokerViewMBeanName = assertRegisteredObjectName(secondBrokerMbeanServer, secondBroker.getBrokerObjectName().toString());
+        BrokerViewMBean secondBrokerMBean = MBeanServerInvocationHandler.newProxyInstance(secondBrokerMbeanServer, secondBrokerViewMBeanName, BrokerViewMBean.class, true);
+        secondBrokerMBean.removeQueue(destination.getPhysicalName());
+
+        assertEquals(secondBrokerMBean.getQueues().length, 0);
+
+        firstBroker.stop();
+        firstBroker.waitUntilStopped();
+        firstBroker = createFirstBroker(new BrokerPlugin[]{new StopOnCommitBrokerPlugin(1)});
+        try {
+            firstBroker.start();
+        } catch (Exception ignore) {}
+
+        firstBroker = createFirstBroker();
+        firstBroker.start();
+        firstBroker.waitUntilStarted();
+
+        waitForCondition(() -> {
+            try {
+                QueueViewMBean secondBrokerDestinationQueue = getQueueView(secondBroker, destination.getPhysicalName());
+                assertEquals(numberOfMessages, secondBrokerDestinationQueue.getEnqueueCount());
+            } catch (Exception urlException) {
+                urlException.printStackTrace();
+                throw new RuntimeException(urlException);
+            }
+        });
+
+        for (int i = 0; i < numberOfMessages; i++) {
+            Message receivedMessage = secondBrokerConsumer.receive(LONG_TIMEOUT);
+            assertNotNull(receivedMessage);
+            assertTrue(receivedMessage instanceof TextMessage);
+            assertEquals(Integer.toString(i), ((TextMessage) receivedMessage).getText());
+
+            receivedMessage.acknowledge();
+        }
+
+        firstBrokerSession.close();
+        secondBrokerSession.close();
+    }
 
     @Override
     protected BrokerService createFirstBroker() throws Exception {
+        return createFirstBroker(null);
+    }
+
+    private BrokerService createFirstBroker(BrokerPlugin[] extraPlugins) throws Exception {
         BrokerService answer = new BrokerService();
         answer.setUseJmx(true);
         answer.setPersistent(true);
@@ -303,8 +381,36 @@ public class ReplicaResynchronizationTest extends ReplicaPluginTestSupport {
         replicaPlugin.setSourceSendPeriod(100);
         replicaPlugin.setResyncBrokersOnStart(true);
 
-        answer.setPlugins(new BrokerPlugin[]{replicaPlugin});
+        BrokerPlugin[] plugins;
+        if (extraPlugins != null && extraPlugins.length > 0) {
+            plugins = Arrays.copyOf(extraPlugins, extraPlugins.length + 1);
+            plugins[extraPlugins.length] = replicaPlugin;
+        } else {
+            plugins = new BrokerPlugin[]{replicaPlugin};
+        }
+
+        answer.setPlugins(plugins);
         answer.setSchedulerSupport(true);
         return answer;
+    }
+
+    private static class StopOnCommitBrokerPlugin extends BrokerPluginSupport {
+
+        private int commitTransactionCount;
+
+        private final int skipCommits;
+
+        private StopOnCommitBrokerPlugin(int skipCommits) {
+            this.skipCommits = skipCommits;
+        }
+
+        @Override
+        public void commitTransaction(ConnectionContext context, TransactionId xid, boolean onePhase) throws Exception {
+            super.commitTransaction(context, xid, onePhase);
+            if (commitTransactionCount++ >= skipCommits) {
+                getBrokerService().stop();
+                throw new BrokerStoppedException();
+            }
+        }
     }
 }
