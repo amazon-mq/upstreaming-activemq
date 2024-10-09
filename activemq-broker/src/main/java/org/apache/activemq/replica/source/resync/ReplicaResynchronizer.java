@@ -20,6 +20,7 @@ import org.apache.activemq.broker.Broker;
 import org.apache.activemq.broker.ConnectionContext;
 import org.apache.activemq.command.ActiveMQDestination;
 import org.apache.activemq.command.ActiveMQQueue;
+import org.apache.activemq.command.ActiveMQTopic;
 import org.apache.activemq.command.ConnectionId;
 import org.apache.activemq.command.LocalTransactionId;
 import org.apache.activemq.replica.ReplicaRoleManagement;
@@ -56,17 +57,18 @@ public class ReplicaResynchronizer {
             sendResetMessage(connectionContext);
         }
 
-        List<ActiveMQQueue> destinations = broker.getDurableDestinations().stream()
-                .filter(ActiveMQDestination::isQueue)
-                .map(ActiveMQQueue.class::cast)
-                .collect(Collectors.toList());
 
-        for (ActiveMQQueue destination : destinations) {
+        for (ActiveMQDestination destination : broker.getDurableDestinations()) {
             if (ReplicaSupport.isReplicationDestination(destination)) {
                 continue;
             }
 
-            ReplicaQueueSynchronizer.resynchronize(broker, replicator, connectionContext, destination);
+            if (destination.isQueue()) {
+                ReplicaQueueSynchronizer.resynchronize(broker, replicator, connectionContext, (ActiveMQQueue) destination);
+            }
+            if (destination.isTopic()) {
+                ReplicaTopicSynchronizer.resynchronize(broker, replicator, connectionContext, (ActiveMQTopic) destination);
+            }
         }
 
         management.updateBrokerRole(connectionContext, null, ReplicaRole.source);
