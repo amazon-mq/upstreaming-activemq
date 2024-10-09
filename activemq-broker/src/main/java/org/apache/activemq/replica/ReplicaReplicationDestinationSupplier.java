@@ -38,11 +38,13 @@ public class ReplicaReplicationDestinationSupplier {
     private final CountDownLatch initializationLatch = new CountDownLatch(1);
     private final CountDownLatch sequenceInitializationLatch = new CountDownLatch(1);
     private final CountDownLatch roleInitializationLatch = new CountDownLatch(1);
+    private final CountDownLatch resynchronizationInitializationLatch = new CountDownLatch(1);
     private ActiveMQQueue mainReplicationQueue = null; // memoized
     private ActiveMQQueue intermediateReplicationQueue = null; // memoized
     private ActiveMQQueue sequenceQueue = null; // memoized
     private ActiveMQQueue roleQueue = null; // memoized
     private ActiveMQTopic roleAdvisoryTopic = null; // memoized
+    private ActiveMQQueue resynchronizationQueue = null; // memoized
     private final Broker broker;
 
     public ReplicaReplicationDestinationSupplier(final Broker broker) {
@@ -104,6 +106,17 @@ public class ReplicaReplicationDestinationSupplier {
         throw new ActiveMQReplicaException("Timed out waiting for role queue initialization");
     }
 
+    public ActiveMQQueue getResynchronizationQueue() {
+        try {
+            if (resynchronizationInitializationLatch.await(1L, TimeUnit.MINUTES)) {
+                return requireNonNull(resynchronizationQueue);
+            }
+        } catch (InterruptedException e) {
+            throw new ActiveMQReplicaException("Interrupted while waiting for role queue initialization", e);
+        }
+        throw new ActiveMQReplicaException("Timed out waiting for role queue initialization");
+    }
+
     public void initialize() {
         try {
             mainReplicationQueue = getOrCreateMainReplicationQueue();
@@ -138,6 +151,17 @@ public class ReplicaReplicationDestinationSupplier {
 
     }
 
+    public void initializeResynchronizationQueue() {
+        try {
+            resynchronizationQueue = getOrCreateResynchronizationQueue();
+        } catch (Exception e) {
+            logger.error("Could not obtain resynchronization queue", e);
+            throw new ActiveMQReplicaException("Failed to get or create resynchronization queue");
+        }
+        resynchronizationInitializationLatch.countDown();
+
+    }
+
     private ActiveMQQueue getOrCreateMainReplicationQueue() throws Exception {
         return getOrCreateQueue(ReplicaSupport.MAIN_REPLICATION_QUEUE_NAME);
     }
@@ -152,6 +176,10 @@ public class ReplicaReplicationDestinationSupplier {
 
     private ActiveMQQueue getOrCreateRoleQueue() throws Exception {
         return getOrCreateQueue(ReplicaSupport.REPLICATION_ROLE_QUEUE_NAME);
+    }
+
+    private ActiveMQQueue getOrCreateResynchronizationQueue() throws Exception {
+        return getOrCreateQueue(ReplicaSupport.REPLICATION_RESYNCHRONIZATION_QUEUE_NAME);
     }
 
     private ActiveMQTopic getOrCreateRoleAdvisoryTopic() throws Exception {

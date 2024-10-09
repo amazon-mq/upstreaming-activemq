@@ -100,7 +100,8 @@ public class ReplicaRoleManagementBroker extends MutableBrokerFilter implements 
         replicaEventReplicator = new ReplicaEventReplicator(jmxBroker, replicationMessageProducer);
         ReplicaSequencer replicaSequencer = new ReplicaSequencer(jmxBroker, destinationSupplier, replicaInternalMessageProducer,
                 replicationMessageProducer, replicaPolicy, replicaStatistics);
-        ReplicaResynchronizer replicaResynchronizer = new ReplicaResynchronizer(jmxBroker, replicaEventReplicator, this);
+        ReplicaResynchronizer replicaResynchronizer = new ReplicaResynchronizer(jmxBroker, replicaEventReplicator,
+                this, destinationSupplier, replicaInternalMessageProducer);
 
         sourceBroker = buildSourceBroker(replicaEventReplicator, replicaSequencer, destinationSupplier, replicaResynchronizer);
         replicaBroker = buildReplicaBroker(destinationSupplier);
