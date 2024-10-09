@@ -21,6 +21,7 @@ public enum ReplicaRole {
     replica,
     await_ack(source),
     ack_processed(replica),
+    in_resync(source),
     ;
 
     private final ReplicaRole externalRole;

@@ -34,6 +34,7 @@ import org.apache.activemq.replica.jmx.ReplicaJmxBroker;
 import org.apache.activemq.replica.jmx.ReplicaStatistics;
 import org.apache.activemq.replica.replica.ReplicaBroker;
 import org.apache.activemq.replica.source.ReplicaEventReplicator;
+import org.apache.activemq.replica.source.ReplicaResynchronizer;
 import org.apache.activemq.replica.source.ReplicaSequencer;
 import org.apache.activemq.replica.source.ReplicaSourceBroker;
 import org.apache.activemq.replica.source.ReplicationMessageProducer;
@@ -61,6 +62,7 @@ public class ReplicaRoleManagementBroker extends MutableBrokerFilter implements 
     private final ClassLoader contextClassLoader;
     private final ReplicaEventReplicator replicaEventReplicator;
     private ReplicaRole role;
+    private final boolean resyncBrokersOnStart;
     private final ReplicaStatistics replicaStatistics;
     private final ReplicaReplicationDestinationSupplier destinationSupplier;
     private final WebConsoleAccessController webConsoleAccessController;
@@ -73,11 +75,13 @@ public class ReplicaRoleManagementBroker extends MutableBrokerFilter implements 
     ReplicaBroker replicaBroker;
     private ReplicaRoleStorage replicaRoleStorage;
 
-    public ReplicaRoleManagementBroker(ReplicaJmxBroker jmxBroker, ReplicaPolicy replicaPolicy, ReplicaRole role, ReplicaStatistics replicaStatistics) {
+    public ReplicaRoleManagementBroker(ReplicaJmxBroker jmxBroker, ReplicaPolicy replicaPolicy, ReplicaRole role,
+            boolean resyncBrokersOnStart, ReplicaStatistics replicaStatistics) {
         super(jmxBroker);
         this.jmxBroker = jmxBroker;
         this.replicaPolicy = replicaPolicy;
         this.role = role;
+        this.resyncBrokersOnStart = resyncBrokersOnStart;
         this.replicaStatistics = replicaStatistics;
 
         contextClassLoader = Thread.currentThread().getContextClassLoader();
@@ -94,8 +98,9 @@ public class ReplicaRoleManagementBroker extends MutableBrokerFilter implements 
         replicaEventReplicator = new ReplicaEventReplicator(jmxBroker, replicationMessageProducer);
         ReplicaSequencer replicaSequencer = new ReplicaSequencer(jmxBroker, destinationSupplier, replicaInternalMessageProducer,
                 replicationMessageProducer, replicaPolicy, replicaStatistics);
+        ReplicaResynchronizer replicaResynchronizer = new ReplicaResynchronizer(jmxBroker, replicaEventReplicator);
 
-        sourceBroker = buildSourceBroker(replicaEventReplicator, replicaSequencer, destinationSupplier);
+        sourceBroker = buildSourceBroker(replicaEventReplicator, replicaSequencer, destinationSupplier, replicaResynchronizer);
         replicaBroker = buildReplicaBroker(destinationSupplier);
 
         addInterceptor4CompositeQueues();
@@ -106,7 +111,7 @@ public class ReplicaRoleManagementBroker extends MutableBrokerFilter implements 
     public void start() throws Exception {
         initializeTransportConnector();
         super.start();
-        initializeRoleStorage();
+        initializeRoleAndRoleStorage();
 
         MutativeRoleBroker nextByRole = getNextByRole();
         nextByRole.start(role);
@@ -184,7 +189,7 @@ public class ReplicaRoleManagementBroker extends MutableBrokerFilter implements 
         webConsoleAccessController.start();
     }
 
-    private void initializeRoleStorage() throws Exception {
+    private void initializeRoleAndRoleStorage() throws Exception {
         ConnectionContext connectionContext = createConnectionContext();
         connectionContext.setClientId(FAIL_OVER_CONSUMER_CLIENT_ID);
         connectionContext.setConnection(new DummyConnection());
@@ -194,12 +199,17 @@ public class ReplicaRoleManagementBroker extends MutableBrokerFilter implements 
         if (savedRole != null) {
             role = savedRole;
         }
+        if (resyncBrokersOnStart && role.getExternalRole() == ReplicaRole.source) {
+            role = ReplicaRole.in_resync;
+        }
+        updateBrokerRole(getAdminConnectionContext(), null, role);
     }
 
     private ReplicaSourceBroker buildSourceBroker(ReplicaEventReplicator replicaEventReplicator,
-            ReplicaSequencer replicaSequencer, ReplicaReplicationDestinationSupplier destinationSupplier) {
+            ReplicaSequencer replicaSequencer, ReplicaReplicationDestinationSupplier destinationSupplier,
+            ReplicaResynchronizer replicaResynchronizer) {
         return new ReplicaSourceBroker(jmxBroker, this, replicaEventReplicator, replicaSequencer,
-                destinationSupplier, replicaPolicy);
+                destinationSupplier, replicaResynchronizer, replicaPolicy);
     }
 
     private ReplicaBroker buildReplicaBroker(ReplicaReplicationDestinationSupplier destinationSupplier) {
@@ -240,6 +250,7 @@ public class ReplicaRoleManagementBroker extends MutableBrokerFilter implements 
         switch (role) {
             case source:
             case await_ack:
+            case in_resync:
                 return sourceBroker;
             case replica:
             case ack_processed:
