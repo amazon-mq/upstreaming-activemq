@@ -128,7 +128,7 @@ public abstract class ReplicaBaseStorage {
         return Collections.singletonList(allMessages.get(allMessages.size() - 1));
     }
 
-    protected void acknowledgeAll(ConnectionContext connectionContext, TransactionId tid) throws Exception {
+    public void acknowledgeAll(ConnectionContext connectionContext, TransactionId tid) throws Exception {
         List<MessageReference> dispatched = subscription.getDispatched();
 
         if (!dispatched.isEmpty()) {

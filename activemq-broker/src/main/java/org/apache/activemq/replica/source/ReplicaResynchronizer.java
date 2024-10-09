@@ -25,7 +25,10 @@ import org.apache.activemq.command.ConnectionId;
 import org.apache.activemq.command.LocalTransactionId;
 import org.apache.activemq.command.Message;
 import org.apache.activemq.command.MessageId;
+import org.apache.activemq.replica.ReplicaRoleManagement;
+import org.apache.activemq.replica.ReplicaRoleManagementBroker;
 import org.apache.activemq.replica.util.DestinationExtractor;
+import org.apache.activemq.replica.util.ReplicaRole;
 import org.apache.activemq.replica.util.ReplicaSupport;
 import org.apache.activemq.store.MessageRecoveryListener;
 import org.apache.activemq.store.MessageStore;
@@ -42,13 +45,37 @@ public class ReplicaResynchronizer {
     private final Logger logger = LoggerFactory.getLogger(ReplicaResynchronizer.class);
     private final Broker broker;
     private final ReplicaEventReplicator replicator;
+    private final ReplicaRoleManagement management;
 
-    public ReplicaResynchronizer(Broker broker, ReplicaEventReplicator replicator) {
+    public ReplicaResynchronizer(Broker broker, ReplicaEventReplicator replicator, ReplicaRoleManagement management) {
         this.broker = broker;
         this.replicator = replicator;
+        this.management = management;
     }
 
-    public void resynchronize() throws Exception {
+    public void resynchronize(ReplicaRole role, boolean resync) throws Exception {
+        ConnectionContext connectionContext = broker.getAdminConnectionContext().copy();
+        if (connectionContext.getTransactions() == null) {
+            connectionContext.setTransactions(new ConcurrentHashMap<>());
+        }
+
+        if (resync && role != ReplicaRole.in_resync) {
+            LocalTransactionId tid = new LocalTransactionId(
+                    new ConnectionId(ReplicaSupport.REPLICATION_PLUGIN_CONNECTION_ID),
+                    ReplicaSupport.LOCAL_TRANSACTION_ID_GENERATOR.getNextSequenceId());
+
+            broker.beginTransaction(connectionContext, tid);
+            try {
+                management.updateBrokerRole(connectionContext, tid, ReplicaRole.in_resync);
+                replicator.enqueueResetEvent(connectionContext, tid);
+                broker.commitTransaction(connectionContext, tid, true);
+            } catch (Exception e) {
+                broker.rollbackTransaction(connectionContext, tid);
+                logger.error("Failed", e);
+                throw e;
+            }
+        }
+
         List<ActiveMQQueue> destinations = broker.getDurableDestinations().stream()
                 .filter(ActiveMQDestination::isQueue)
                 .map(ActiveMQQueue.class::cast)
@@ -61,13 +88,11 @@ public class ReplicaResynchronizer {
             logger.info("Resyncronizing: " + desination);
             Queue queue = broker.getDestinations(desination).stream().findFirst().map(DestinationExtractor::extractQueue).orElseThrow();
 
+            replicator.replicateDestinationCreation(broker.getAdminConnectionContext(), desination);
+            replicator.replicateQueuePurged(broker.getAdminConnectionContext(), desination);
+
             MessageStore messageStore = queue.getMessageStore();
             AtomicInteger i = new AtomicInteger();
-
-            ConnectionContext connectionContext = broker.getAdminConnectionContext().copy();
-            if (connectionContext.getTransactions() == null) {
-                connectionContext.setTransactions(new ConcurrentHashMap<>());
-            }
             messageStore.recover(new MessageRecoveryListener() {
                 @Override
                 public boolean recoverMessage(Message message) throws Exception {
@@ -109,5 +134,7 @@ public class ReplicaResynchronizer {
             });
             messageStore.resetBatching();
         }
+
+        management.updateBrokerRole(broker.getAdminConnectionContext(), null, ReplicaRole.source);
     }
 }

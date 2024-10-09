@@ -41,7 +41,7 @@ public abstract class MutativeRoleBroker extends BrokerFilter {
         this.management = management;
     }
 
-    public abstract void start(ReplicaRole role) throws Exception;
+    public abstract void start(ReplicaRole role, boolean resync) throws Exception;
 
     protected abstract void stopBeforeRoleChange(boolean force) throws Exception;
 
