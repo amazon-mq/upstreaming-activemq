@@ -31,7 +31,7 @@ import java.util.Set;
 
 public class ReplicaBatcher {
 
-    private ReplicaPolicy replicaPolicy;
+    private final ReplicaPolicy replicaPolicy;
 
     public ReplicaBatcher(ReplicaPolicy replicaPolicy) {
         this.replicaPolicy = replicaPolicy;
@@ -50,8 +50,8 @@ public class ReplicaBatcher {
             ReplicaEventType currentEventType =
                     ReplicaEventType.valueOf(message.getStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY));
 
-            if (currentEventType == ReplicaEventType.FAIL_OVER) {
-                if (batch.size() > 0) {
+            if (ReplicaEventType.TRANSACTIONLESS_EVENT_TYPES.contains(currentEventType)) {
+                if (!batch.isEmpty()) {
                     result.add(batch);
                     batch = new ArrayList<>();
                     batchSize = 0;
@@ -79,7 +79,7 @@ public class ReplicaBatcher {
 
             boolean exceedsLength = batch.size() + 1 > replicaPolicy.getMaxBatchLength();
             boolean exceedsSize = batchSize + reference.getSize() > replicaPolicy.getMaxBatchSize();
-            if (batch.size() > 0 && (exceedsLength || exceedsSize || eventTypeSwitch)) {
+            if (!batch.isEmpty() && (exceedsLength || exceedsSize || eventTypeSwitch)) {
                 result.add(batch);
                 batch = new ArrayList<>();
                 batchSize = 0;
@@ -88,7 +88,7 @@ public class ReplicaBatcher {
             batch.add(reference);
             batchSize += reference.getSize();
         }
-        if (batch.size() > 0) {
+        if (!batch.isEmpty()) {
             result.add(batch);
         }
 

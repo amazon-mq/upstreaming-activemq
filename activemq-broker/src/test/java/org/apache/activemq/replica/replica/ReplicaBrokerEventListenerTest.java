@@ -88,7 +88,7 @@ public class ReplicaBrokerEventListenerTest {
     private final ActiveMQQueue sequenceQueue = new ActiveMQQueue(ReplicaSupport.SEQUENCE_REPLICATION_QUEUE_NAME);
     private final ActiveMQQueue testQueue = new ActiveMQQueue("TEST.QUEUE");
     private final ActiveMQTopic testTopic = new ActiveMQTopic("TEST.TOPIC");
-    private final Destination sequenceDstinationQueue = mock(Queue.class);
+    private final Destination sequenceDestinationQueue = mock(Queue.class);
     private final Destination destinationQueue = mock(Queue.class);
     private final Destination destinationTopic = mock(Topic.class);
     private final ConnectionContext connectionContext = mock(ConnectionContext.class);
@@ -116,7 +116,7 @@ public class ReplicaBrokerEventListenerTest {
         File brokerDataDirectory = new File(IOHelper.getDefaultDataDirectory());
         when(brokerService.getBrokerDataDirectory()).thenReturn(brokerDataDirectory);
         when(queueProvider.getSequenceQueue()).thenReturn(sequenceQueue);
-        when(broker.getDestinations(sequenceQueue)).thenReturn(Set.of(sequenceDstinationQueue));
+        when(broker.getDestinations(sequenceQueue)).thenReturn(Set.of(sequenceDestinationQueue));
         when(broker.addConsumer(any(), any())).thenReturn(subscription);
         when(broker.getAdaptor(TransactionBroker.class)).thenReturn(transactionBroker);
         SystemUsage systemUsage = mock(SystemUsage.class);
@@ -995,6 +995,29 @@ public class ReplicaBrokerEventListenerTest {
         replicaEventMessage.setProperties(event.getReplicationProperties());
 
         listener.onMessage(replicaEventMessage);
+    }
+
+    @Test
+    public void canHandleEventOfType_RESET() throws Exception {
+        listener.sequence = new BigInteger("0");
+        listener.sequenceMessageId = new MessageId("0:0:0:0");
+        MessageId messageId = new MessageId("1:1:1:1");
+        ReplicaEvent event = new ReplicaEvent()
+                .setEventType(ReplicaEventType.RESET)
+                .setEventData(eventSerializer.serializeReplicationData(null));
+        ActiveMQMessage replicaEventMessage = spy(new ActiveMQMessage());
+        replicaEventMessage.setMessageId(messageId);
+        replicaEventMessage.setType("ReplicaEvent");
+        replicaEventMessage.setStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY, event.getEventType().name());
+        replicaEventMessage.setStringProperty(ReplicaSupport.SEQUENCE_PROPERTY, "1");
+        replicaEventMessage.setIntProperty(ReplicaSupport.VERSION_PROPERTY, ReplicaSupport.CURRENT_VERSION);
+        replicaEventMessage.setContent(event.getEventData());
+        replicaEventMessage.setProperties(event.getReplicationProperties());
+
+        listener.onMessage(replicaEventMessage);
+
+        assertThat(listener.sequence).isNull();
+        assertThat(listener.sequenceMessageId).isNull();
     }
 
     private Xid getDummyXid() {
