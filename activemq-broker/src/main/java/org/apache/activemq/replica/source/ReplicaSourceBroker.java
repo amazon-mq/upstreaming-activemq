@@ -85,7 +85,7 @@ public class ReplicaSourceBroker extends MutativeRoleBroker {
     public void start(ReplicaRole role, boolean resync) throws Exception {
         logger.info("Starting Source broker. " + (role == ReplicaRole.await_ack ? " Awaiting ack." : ""));
 
-        if (resync) {
+        if (resync && role != ReplicaRole.in_resync) {
             removeReplicationQueues();
         }
         initQueueProvider();

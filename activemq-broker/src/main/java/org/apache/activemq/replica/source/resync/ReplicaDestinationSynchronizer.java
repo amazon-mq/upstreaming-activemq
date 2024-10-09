@@ -35,6 +35,7 @@ abstract class ReplicaDestinationSynchronizer implements ReplicaMessageRecoveryL
     final ReplicaEventReplicator replicator;
     final ConnectionContext connectionContext;
     final ActiveMQDestination destination;
+    private final MessageId restoreMessageId;
     final MessageStore messageStore;
     private final ReplicaMessageRecoveryListener listener;
 
@@ -44,6 +45,7 @@ abstract class ReplicaDestinationSynchronizer implements ReplicaMessageRecoveryL
         this.replicator = replicator;
         this.connectionContext = connectionContext;
         this.destination = destination;
+        this.restoreMessageId = restoreMessageId;
         messageStore = broker.getDestinations(destination).stream().findFirst().map(Destination::getMessageStore).orElseThrow();
         listener = new ReplicaMessageRecoveryListener(broker, storage, connectionContext, destination, restoreMessageId, this);
     }
@@ -51,7 +53,9 @@ abstract class ReplicaDestinationSynchronizer implements ReplicaMessageRecoveryL
     void resynchronize() throws Exception {
         logger.info("Resyncronizing: " + destination);
 
-        preRecover();
+        if (restoreMessageId == null) {
+            preRecover();
+        }
 
         messageStore.recover(listener);
         listener.commitIfNeeded();
