@@ -52,6 +52,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Arrays;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class ReplicaRoleManagementBroker extends MutableBrokerFilter implements ReplicaRoleManagement {
     private static final String FAIL_OVER_CONSUMER_CLIENT_ID = "DUMMY_FAIL_OVER_CONSUMER";
@@ -74,6 +75,7 @@ public class ReplicaRoleManagementBroker extends MutableBrokerFilter implements 
     ReplicaSourceBroker sourceBroker;
     ReplicaBroker replicaBroker;
     private ReplicaRoleStorage replicaRoleStorage;
+    private final AtomicBoolean pluginInitialized = new AtomicBoolean();
 
     public ReplicaRoleManagementBroker(ReplicaJmxBroker jmxBroker, ReplicaPolicy replicaPolicy, ReplicaRole role,
             boolean resyncBrokersOnStart, ReplicaStatistics replicaStatistics) {
@@ -116,6 +118,8 @@ public class ReplicaRoleManagementBroker extends MutableBrokerFilter implements 
         MutativeRoleBroker nextByRole = getNextByRole();
         nextByRole.start(role, resyncBrokersOnStart);
         setNext(nextByRole);
+
+        pluginInitialized.set(true);
     }
 
     @Override
@@ -140,6 +144,9 @@ public class ReplicaRoleManagementBroker extends MutableBrokerFilter implements 
     }
 
     public synchronized void switchRole(ReplicaRole role, boolean force) throws Exception {
+        if (!pluginInitialized.get()) {
+            throw new IllegalStateException("Replica plugin is not initialized");
+        }
         if (role != ReplicaRole.source && role != ReplicaRole.replica) {
             return;
         }
