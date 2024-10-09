@@ -39,7 +39,7 @@ import org.apache.activemq.command.MessageId;
 import org.apache.activemq.command.TransactionId;
 import org.apache.activemq.command.XATransactionId;
 import org.apache.activemq.replica.ReplicaPolicy;
-import org.apache.activemq.replica.ReplicaReplicationQueueSupplier;
+import org.apache.activemq.replica.ReplicaReplicationDestinationSupplier;
 import org.apache.activemq.replica.jmx.ReplicaStatistics;
 import org.apache.activemq.replica.util.ReplicaEvent;
 import org.apache.activemq.replica.util.ReplicaEventSerializer;
@@ -92,7 +92,7 @@ public class ReplicaBrokerEventListenerTest {
     private final Destination destinationQueue = mock(Queue.class);
     private final Destination destinationTopic = mock(Topic.class);
     private final ConnectionContext connectionContext = mock(ConnectionContext.class);
-    private final ReplicaReplicationQueueSupplier queueProvider = mock(ReplicaReplicationQueueSupplier.class);
+    private final ReplicaReplicationDestinationSupplier queueProvider = mock(ReplicaReplicationDestinationSupplier.class);
     private final PrefetchSubscription subscription = mock(PrefetchSubscription.class);
     private final TransactionBroker transactionBroker = mock(TransactionBroker.class);
     private ReplicaBrokerEventListener listener;

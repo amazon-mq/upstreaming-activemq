@@ -60,7 +60,7 @@ public class ReplicaRoleManagementBroker extends MutableBrokerFilter implements 
     private final ClassLoader contextClassLoader;
     private ReplicaRole role;
     private final ReplicaStatistics replicaStatistics;
-    private final ReplicaReplicationQueueSupplier queueProvider;
+    private final ReplicaReplicationDestinationSupplier destinationSupplier;
     private final WebConsoleAccessController webConsoleAccessController;
     private final ReplicaInternalMessageProducer replicaInternalMessageProducer;
 
@@ -82,18 +82,18 @@ public class ReplicaRoleManagementBroker extends MutableBrokerFilter implements 
 
         replicationProducerId.setConnectionId(new IdGenerator().generateId());
 
-        queueProvider = new ReplicaReplicationQueueSupplier(jmxBroker);
+        destinationSupplier = new ReplicaReplicationDestinationSupplier(jmxBroker);
         webConsoleAccessController = new WebConsoleAccessController(jmxBroker.getBrokerService(),
                 replicaPolicy.isControlWebConsoleAccess());
 
         replicaInternalMessageProducer = new ReplicaInternalMessageProducer(jmxBroker);
         ReplicationMessageProducer replicationMessageProducer =
-                new ReplicationMessageProducer(replicaInternalMessageProducer, queueProvider);
-        ReplicaSequencer replicaSequencer = new ReplicaSequencer(jmxBroker, queueProvider, replicaInternalMessageProducer,
+                new ReplicationMessageProducer(replicaInternalMessageProducer, destinationSupplier);
+        ReplicaSequencer replicaSequencer = new ReplicaSequencer(jmxBroker, destinationSupplier, replicaInternalMessageProducer,
                 replicationMessageProducer, replicaPolicy, replicaStatistics);
 
-        sourceBroker = buildSourceBroker(replicationMessageProducer, replicaSequencer, queueProvider);
-        replicaBroker = buildReplicaBroker(queueProvider);
+        sourceBroker = buildSourceBroker(replicationMessageProducer, replicaSequencer, destinationSupplier);
+        replicaBroker = buildReplicaBroker(destinationSupplier);
 
         addInterceptor4CompositeQueues();
         addInterceptor4MirroredQueues();
@@ -185,8 +185,8 @@ public class ReplicaRoleManagementBroker extends MutableBrokerFilter implements 
         ConnectionContext connectionContext = createConnectionContext();
         connectionContext.setClientId(FAIL_OVER_CONSUMER_CLIENT_ID);
         connectionContext.setConnection(new DummyConnection());
-        queueProvider.initializeRoleQueueAndTopic();
-        replicaRoleStorage = new ReplicaRoleStorage(jmxBroker, queueProvider, replicaInternalMessageProducer);
+        destinationSupplier.initializeRoleQueueAndTopic();
+        replicaRoleStorage = new ReplicaRoleStorage(jmxBroker, destinationSupplier, replicaInternalMessageProducer);
         ReplicaRole savedRole = replicaRoleStorage.initialize(connectionContext);
         if (savedRole != null) {
             role = savedRole;
@@ -194,12 +194,12 @@ public class ReplicaRoleManagementBroker extends MutableBrokerFilter implements 
     }
 
     private ReplicaSourceBroker buildSourceBroker(ReplicationMessageProducer replicationMessageProducer,
-            ReplicaSequencer replicaSequencer, ReplicaReplicationQueueSupplier queueProvider) {
+            ReplicaSequencer replicaSequencer, ReplicaReplicationDestinationSupplier queueProvider) {
         return new ReplicaSourceBroker(jmxBroker, this, replicationMessageProducer, replicaSequencer,
                 queueProvider, replicaPolicy);
     }
 
-    private ReplicaBroker buildReplicaBroker(ReplicaReplicationQueueSupplier queueProvider) {
+    private ReplicaBroker buildReplicaBroker(ReplicaReplicationDestinationSupplier queueProvider) {
         return new ReplicaBroker(jmxBroker, this, queueProvider, replicaPolicy, replicaStatistics);
     }
 
@@ -257,7 +257,7 @@ public class ReplicaRoleManagementBroker extends MutableBrokerFilter implements 
         ActiveMQTextMessage message = new ActiveMQTextMessage();
         message.setText(role.name());
         message.setTransactionId(null);
-        message.setDestination(queueProvider.getRoleAdvisoryTopic());
+        message.setDestination(destinationSupplier.getRoleAdvisoryTopic());
         message.setMessageId(new MessageId(replicationProducerId, eventMessageIdGenerator.getNextSequenceId()));
         message.setProducerId(replicationProducerId);
         message.setPersistent(false);

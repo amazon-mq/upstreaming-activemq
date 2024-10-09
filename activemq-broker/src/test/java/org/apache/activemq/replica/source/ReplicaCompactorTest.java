@@ -26,9 +26,8 @@ import org.apache.activemq.command.ActiveMQQueue;
 import org.apache.activemq.command.ConsumerInfo;
 import org.apache.activemq.command.MessageAck;
 import org.apache.activemq.command.MessageId;
-import org.apache.activemq.replica.ReplicaReplicationQueueSupplier;
+import org.apache.activemq.replica.ReplicaReplicationDestinationSupplier;
 import org.apache.activemq.replica.jmx.ReplicaStatistics;
-import org.apache.activemq.replica.source.ReplicaCompactor;
 import org.apache.activemq.replica.util.ReplicaEventType;
 import org.apache.activemq.replica.util.ReplicaSupport;
 import org.apache.activemq.store.MessageStore;
@@ -51,7 +50,7 @@ public class ReplicaCompactorTest {
 
     private final ConnectionContext connectionContext = mock(ConnectionContext.class);
     private final Broker broker = mock(Broker.class);
-    private final ReplicaReplicationQueueSupplier queueProvider = mock(ReplicaReplicationQueueSupplier.class);
+    private final ReplicaReplicationDestinationSupplier queueProvider = mock(ReplicaReplicationDestinationSupplier.class);
     private final MessageStore messageStore = mock(MessageStore.class);
 
     private final ActiveMQQueue intermediateQueueDestination = new ActiveMQQueue(ReplicaSupport.INTERMEDIATE_REPLICATION_QUEUE_NAME);
