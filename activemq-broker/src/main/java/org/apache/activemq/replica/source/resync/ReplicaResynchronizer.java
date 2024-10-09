@@ -141,7 +141,7 @@ public class ReplicaResynchronizer {
             broker.commitTransaction(connectionContext, tid, true);
         } catch (Exception e) {
             broker.rollbackTransaction(connectionContext, tid);
-            logger.error("Failed", e);
+            logger.error("Failed to send reset message", e);
             throw e;
         }
     }
