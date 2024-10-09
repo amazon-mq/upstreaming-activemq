@@ -102,10 +102,11 @@ public class ReplicaSourceBrokerTest {
         ReplicationMessageProducer replicationMessageProducer = new ReplicationMessageProducer(replicaInternalMessageProducer, queueProvider);
         ReplicaPolicy replicaPolicy = new ReplicaPolicy();
         replicaPolicy.setTransportConnectorUri(transportConnectorUri);
-        source = new ReplicaSourceBroker(broker, null, replicationMessageProducer, replicaSequencer, queueProvider, replicaPolicy);
+        ReplicaEventReplicator replicaEventReplicator = new ReplicaEventReplicator(broker, replicationMessageProducer);
+        source = new ReplicaSourceBroker(broker, null, replicaEventReplicator, replicaSequencer, queueProvider, replicaPolicy);
         when(brokerService.getBroker()).thenReturn(source);
 
-        source.destinationsToReplicate.put(testQueue, IS_REPLICATED);
+        replicaEventReplicator.destinationsToReplicate.put(testQueue, IS_REPLICATED);
     }
 
     @Test
