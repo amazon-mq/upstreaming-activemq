@@ -21,6 +21,7 @@ import org.apache.activemq.ActiveMQXAConnectionFactory;
 import org.apache.activemq.AutoFailTestSupport;
 import org.apache.activemq.broker.BrokerPlugin;
 import org.apache.activemq.broker.BrokerService;
+import org.apache.activemq.broker.jmx.BrokerViewMBean;
 import org.apache.activemq.broker.jmx.QueueViewMBean;
 import org.apache.activemq.broker.jmx.TopicViewMBean;
 import org.apache.activemq.command.ActiveMQDestination;
@@ -231,6 +232,13 @@ public abstract class ReplicaPluginTestSupport extends AutoFailTestSupport {
         objectNameStr += ",service=Plugins,instanceName=ReplicationPlugin";
         ObjectName replicaViewMBeanName = assertRegisteredObjectName(mbeanServer, objectNameStr);
         return MBeanServerInvocationHandler.newProxyInstance(mbeanServer, replicaViewMBeanName, ReplicationViewMBean.class, true);
+    }
+
+    protected BrokerViewMBean getBrokerView(BrokerService broker) throws Exception {
+        MBeanServer mbeanServer = broker.getManagementContext().getMBeanServer();
+        String objectNameStr = broker.getBrokerObjectName().toString();
+        ObjectName replicaViewMBeanName = assertRegisteredObjectName(mbeanServer, objectNameStr);
+        return MBeanServerInvocationHandler.newProxyInstance(mbeanServer, replicaViewMBeanName, BrokerViewMBean.class, true);
     }
 
     protected ObjectName assertRegisteredObjectName(MBeanServer mbeanServer, String name) throws MalformedObjectNameException, NullPointerException {

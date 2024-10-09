@@ -25,6 +25,7 @@ import org.apache.activemq.broker.ConnectionContext;
 import org.apache.activemq.broker.jmx.BrokerViewMBean;
 import org.apache.activemq.broker.jmx.QueueViewMBean;
 import org.apache.activemq.broker.jmx.TopicViewMBean;
+import org.apache.activemq.command.ActiveMQQueue;
 import org.apache.activemq.command.ActiveMQTextMessage;
 import org.apache.activemq.command.ActiveMQTopic;
 import org.apache.activemq.command.TransactionId;
@@ -46,7 +47,10 @@ import javax.management.MBeanServer;
 import javax.management.MBeanServerInvocationHandler;
 import javax.management.ObjectName;
 import java.io.File;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
 
 public class ReplicaResynchronizationTest extends ReplicaPluginTestSupport {
 
@@ -97,6 +101,7 @@ public class ReplicaResynchronizationTest extends ReplicaPluginTestSupport {
 
         super.tearDown();
     }
+
     @Test
     public void testQueueResync() throws Exception {
         Session firstBrokerSession = firstBrokerConnection.createSession(false, Session.CLIENT_ACKNOWLEDGE);
@@ -166,6 +171,7 @@ public class ReplicaResynchronizationTest extends ReplicaPluginTestSupport {
         firstBrokerSession.close();
         secondBrokerSession.close();
     }
+
     @Test
     public void testTopicResync() throws Exception {
         ActiveMQTopic topic = new ActiveMQTopic("TOPIC." + getDestinationString());
@@ -283,6 +289,7 @@ public class ReplicaResynchronizationTest extends ReplicaPluginTestSupport {
         firstBrokerSession.close();
         secondBrokerSession.close();
     }
+
     @Test
     public void testRestoreProcess() throws Exception {
         Session firstBrokerSession = firstBrokerConnection.createSession(false, Session.CLIENT_ACKNOWLEDGE);
@@ -358,6 +365,110 @@ public class ReplicaResynchronizationTest extends ReplicaPluginTestSupport {
         secondBrokerSession.close();
     }
 
+    @Test
+    public void testResyncDestinations() throws Exception {
+        Session firstBrokerSession = firstBrokerConnection.createSession(false, Session.CLIENT_ACKNOWLEDGE);
+
+        int numberOfQueues = 1_000;
+        String queueNamePrefix = "QUEUE.TEST.";
+        List<String> queueNames = new ArrayList<>();
+        for (int i = 1; i <= numberOfQueues; i++) {
+            String name = queueNamePrefix + i;
+            firstBrokerSession.createConsumer(new ActiveMQQueue(name)).close();
+            queueNames.add(name);
+        }
+
+        BrokerViewMBean secondBrokerView = getBrokerView(secondBroker);
+        waitForCondition(() -> {
+            try {
+                ObjectName[] queues = secondBrokerView.getQueues();
+                assertEquals(numberOfQueues, queues.length);
+                assertTrue(Arrays.stream(queues).map(v -> v.getKeyProperty("destinationName")).collect(Collectors.toList()).containsAll(queueNames));
+            } catch (Exception urlException) {
+                urlException.printStackTrace();
+                throw new RuntimeException(urlException);
+            }
+        });
+
+        int numberOfTopics = 1_000;
+        String topicNamePrefix = "TOPIC.TEST.";
+        List<String> topicNames = new ArrayList<>();
+        for (int i = 1; i <= numberOfTopics; i++) {
+            String name = topicNamePrefix + i;
+            firstBrokerSession.createDurableSubscriber(new ActiveMQTopic(name), "SUB").close();
+            topicNames.add(name);
+        }
+
+        waitForCondition(() -> {
+            try {
+                ObjectName[] topics = secondBrokerView.getTopics();
+                assertTrue(topics.length >= numberOfTopics);
+                assertTrue(Arrays.stream(topics).map(v -> v.getKeyProperty("destinationName")).collect(Collectors.toList()).containsAll(topicNames));
+            } catch (Exception urlException) {
+                urlException.printStackTrace();
+                throw new RuntimeException(urlException);
+            }
+        });
+
+        for (int i = 1; i <= numberOfQueues; i+= 2) {
+            secondBrokerView.removeQueue(queueNamePrefix + i);
+        }
+        for (int i = 2; i <= numberOfTopics; i+= 2) {
+            secondBrokerView.removeTopic(topicNamePrefix + i);
+        }
+
+        Session secondBrokerSession = secondBrokerConnection.createSession(false, Session.CLIENT_ACKNOWLEDGE);
+        int extraDestinations = 500;
+        String extraDestinationNamePrefix = "EXTRA.";
+        List<String> extraQueueNames = new ArrayList<>();
+        List<String> extraTopicNames = new ArrayList<>();
+        for (int i = 1; i <= extraDestinations; i++) {
+            String queueName = extraDestinationNamePrefix + queueNamePrefix + i;
+            secondBrokerSession.createConsumer(new ActiveMQQueue(queueName)).close();
+            extraQueueNames.add(queueName);
+            String topicName = extraDestinationNamePrefix + topicNamePrefix + i;
+            secondBrokerSession.createConsumer(new ActiveMQTopic(topicName)).close();
+            extraTopicNames.add(topicName);
+        }
+
+        firstBroker.stop();
+        firstBroker.waitUntilStopped();
+        firstBroker = createFirstBroker();
+        firstBroker.start();
+        firstBroker.waitUntilStarted();
+        waitUntilReplicationQueueHasConsumer(firstBroker);
+
+        waitForCondition(() -> {
+            try {
+                ObjectName[] queues = secondBrokerView.getQueues();
+                assertEquals(numberOfQueues, queues.length);
+                List<String> presentQueueNames = Arrays.stream(queues).map(v -> v.getKeyProperty("destinationName")).collect(Collectors.toList());
+                assertTrue(presentQueueNames.containsAll(queueNames));
+                assertTrue(presentQueueNames.stream().noneMatch(extraQueueNames::contains));
+            } catch (Exception urlException) {
+                urlException.printStackTrace();
+                throw new RuntimeException(urlException);
+            }
+        });
+
+        waitForCondition(() -> {
+            try {
+                ObjectName[] topics = secondBrokerView.getTopics();
+                assertTrue(topics.length >= numberOfTopics);
+                assertTrue(topics.length <= numberOfTopics + extraDestinations);
+                List<String> presentTopicNames = Arrays.stream(topics).map(v -> v.getKeyProperty("destinationName")).collect(Collectors.toList());
+                assertTrue(presentTopicNames.containsAll(topicNames));
+                assertTrue(presentTopicNames.stream().noneMatch(extraTopicNames::contains));
+            } catch (Exception urlException) {
+                urlException.printStackTrace();
+                throw new RuntimeException(urlException);
+            }
+        });
+
+        firstBrokerSession.close();
+        secondBrokerSession.close();
+    }
+
     @Override
     protected BrokerService createFirstBroker() throws Exception {
         return createFirstBroker(null);
@@ -408,7 +519,6 @@ public class ReplicaResynchronizationTest extends ReplicaPluginTestSupport {
         public void commitTransaction(ConnectionContext context, TransactionId xid, boolean onePhase) throws Exception {
             super.commitTransaction(context, xid, onePhase);
             if (commitTransactionCount++ >= skipCommits) {
-                getBrokerService().stop();
                 throw new BrokerStoppedException();
             }
         }
