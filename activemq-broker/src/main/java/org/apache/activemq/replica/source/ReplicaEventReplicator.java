@@ -281,7 +281,7 @@ public class ReplicaEventReplicator {
         }
     }
 
-    void replicateAddConsumer(ConnectionContext context, ConsumerInfo consumerInfo, String clientId) throws Exception {
+    public void replicateAddConsumer(ConnectionContext context, ConsumerInfo consumerInfo, String clientId) throws Exception {
         if (!needToReplicateConsumer(consumerInfo)) {
             return;
         }
@@ -366,6 +366,18 @@ public class ReplicaEventReplicator {
 
     void replicateAck(ConnectionContext connectionContext, MessageAck ack, PrefetchSubscription subscription,
             TransactionId transactionId, List<String> messageIdsToAck) throws Exception {
+        String clientId = null;
+        String subscriptionName = null;
+        if (ack.getDestination().isTopic() && subscription instanceof DurableTopicSubscription) {
+            clientId = connectionContext.getClientId();
+            subscriptionName = ((DurableTopicSubscription) subscription).getSubscriptionKey().getSubscriptionName();
+        }
+
+        replicateAck(connectionContext, ack, clientId, subscriptionName, transactionId, messageIdsToAck);
+    }
+
+    public void replicateAck(ConnectionContext connectionContext, MessageAck ack, String clientId, String subscriptionName,
+            TransactionId transactionId, List<String> messageIdsToAck) throws Exception {
         try {
             TransactionId originalTransactionId = ack.getTransactionId();
             ActiveMQDestination destination = ack.getDestination();
@@ -380,10 +392,9 @@ public class ReplicaEventReplicator {
                             destination.toString())
                     .setReplicationProperty(ReplicaSupport.IS_ORIGINAL_MESSAGE_IN_XA_TRANSACTION_PROPERTY,
                             originalTransactionId != null && originalTransactionId.isXATransaction());
-            if (destination.isTopic() && subscription instanceof DurableTopicSubscription) {
-                event.setReplicationProperty(ReplicaSupport.CLIENT_ID_PROPERTY, connectionContext.getClientId());
-                event.setReplicationProperty(ReplicaSupport.SUBSCRIPTION_NAME_PROPERTY,
-                        ((DurableTopicSubscription) subscription).getSubscriptionKey().getSubscriptionName());
+            if (destination.isTopic() && clientId != null) {
+                event.setReplicationProperty(ReplicaSupport.CLIENT_ID_PROPERTY, clientId);
+                event.setReplicationProperty(ReplicaSupport.SUBSCRIPTION_NAME_PROPERTY, subscriptionName);
                 event.setVersion(3);
             }
 
