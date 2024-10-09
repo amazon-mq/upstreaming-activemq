@@ -79,7 +79,7 @@ public class ReplicaBroker extends MutativeRoleBroker {
     }
 
     @Override
-    public void start(ReplicaRole role) throws Exception {
+    public void start(ReplicaRole role, boolean resync) throws Exception {
         init(role);
 
         logger.info("Starting replica broker." +

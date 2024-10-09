@@ -98,7 +98,7 @@ public class ReplicaRoleManagementBroker extends MutableBrokerFilter implements 
         replicaEventReplicator = new ReplicaEventReplicator(jmxBroker, replicationMessageProducer);
         ReplicaSequencer replicaSequencer = new ReplicaSequencer(jmxBroker, destinationSupplier, replicaInternalMessageProducer,
                 replicationMessageProducer, replicaPolicy, replicaStatistics);
-        ReplicaResynchronizer replicaResynchronizer = new ReplicaResynchronizer(jmxBroker, replicaEventReplicator);
+        ReplicaResynchronizer replicaResynchronizer = new ReplicaResynchronizer(jmxBroker, replicaEventReplicator, this);
 
         sourceBroker = buildSourceBroker(replicaEventReplicator, replicaSequencer, destinationSupplier, replicaResynchronizer);
         replicaBroker = buildReplicaBroker(destinationSupplier);
@@ -114,7 +114,7 @@ public class ReplicaRoleManagementBroker extends MutableBrokerFilter implements 
         initializeRoleAndRoleStorage();
 
         MutativeRoleBroker nextByRole = getNextByRole();
-        nextByRole.start(role);
+        nextByRole.start(role, resyncBrokersOnStart);
         setNext(nextByRole);
     }
 
@@ -199,10 +199,6 @@ public class ReplicaRoleManagementBroker extends MutableBrokerFilter implements 
         if (savedRole != null) {
             role = savedRole;
         }
-        if (resyncBrokersOnStart && role.getExternalRole() == ReplicaRole.source) {
-            role = ReplicaRole.in_resync;
-        }
-        updateBrokerRole(getAdminConnectionContext(), null, role);
     }
 
     private ReplicaSourceBroker buildSourceBroker(ReplicaEventReplicator replicaEventReplicator,

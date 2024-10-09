@@ -81,20 +81,22 @@ public class ReplicaSourceBroker extends MutativeRoleBroker {
     }
 
     @Override
-    public void start(ReplicaRole role) throws Exception {
+    public void start(ReplicaRole role, boolean resync) throws Exception {
         logger.info("Starting Source broker. " + (role == ReplicaRole.await_ack ? " Awaiting ack." : ""));
 
-        if (role == ReplicaRole.in_resync) {
+        if (resync) {
             removeReplicationQueues();
         }
         initQueueProvider();
         replicaEventReplicator.initialize();
-        replicaSequencer.initialize();
-        replicaEventReplicator.ensureDestinationsAreReplicated();
 
-        if (role == ReplicaRole.in_resync) {
-            replicaResynchronizer.resynchronize();
+        if (role == ReplicaRole.in_resync || resync) {
+            replicaResynchronizer.resynchronize(role, resync);
+        } else {
+            replicaEventReplicator.ensureDestinationsAreReplicated();
         }
+
+        replicaSequencer.initialize();
 
         initializeHeartBeatSender();
     }

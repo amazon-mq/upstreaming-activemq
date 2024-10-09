@@ -16,6 +16,8 @@
  */
 package org.apache.activemq.replica.util;
 
+import java.util.List;
+
 public enum ReplicaEventType {
     DESTINATION_UPSERT,
     DESTINATION_DELETE,
@@ -34,7 +36,10 @@ public enum ReplicaEventType {
     REMOVE_DURABLE_CONSUMER_SUBSCRIPTION,
     FAIL_OVER,
     HEART_BEAT,
+    RESET,
     ;
 
     public static final String EVENT_TYPE_PROPERTY = "ActiveMQReplicationEventType";
+
+    public static final List<ReplicaEventType> TRANSACTIONLESS_EVENT_TYPES = List.of(FAIL_OVER, RESET);
 }

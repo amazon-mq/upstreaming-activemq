@@ -178,7 +178,7 @@ public class ReplicaBrokerEventListener implements MessageListener {
             TransactionId tid = transactionId;
             ReplicaEventType eventType = getEventType(message);
 
-            if (tid == null && eventType != ReplicaEventType.FAIL_OVER) {
+            if (tid == null && !ReplicaEventType.TRANSACTIONLESS_EVENT_TYPES.contains(eventType)) {
                 tid = new LocalTransactionId(
                         new ConnectionId(ReplicaSupport.REPLICATION_PLUGIN_CONNECTION_ID),
                         ReplicaSupport.LOCAL_TRANSACTION_ID_GENERATOR.getNextSequenceId());
@@ -189,10 +189,16 @@ public class ReplicaBrokerEventListener implements MessageListener {
             }
 
             try {
-                if (eventType == ReplicaEventType.BATCH) {
-                    processBatch(message, tid);
-                } else {
-                    processMessage(message, eventType, tid);
+                switch (eventType) {
+                    case BATCH:
+                        processBatch(message, tid);
+                        break;
+                    case RESET:
+                        processReset();
+                        break;
+                    default:
+                        processMessage(message, eventType, tid);
+                        break;
                 }
 
                 if (commit) {
@@ -679,6 +685,12 @@ public class ReplicaBrokerEventListener implements MessageListener {
         acknowledgeCallback.acknowledge(true);
         replicaBroker.updateBrokerRole(ReplicaRole.source);
         replicaBroker.completeBeforeRoleChange();
+    }
+
+    private void processReset() throws Exception {
+        sequenceStorage.acknowledgeAll(connectionContext, null);
+        sequence = null;
+        sequenceMessageId = null;
     }
 
     private void createTransactionMapIfNotExist() {

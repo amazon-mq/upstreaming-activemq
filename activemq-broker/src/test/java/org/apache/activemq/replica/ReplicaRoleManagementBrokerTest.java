@@ -94,7 +94,7 @@ public class ReplicaRoleManagementBrokerTest {
 
         replicaRoleManagementBroker.start();
 
-        verify(sourceBroker).start(any());
+        verify(sourceBroker).start(any(), anyBoolean());
         verify(replicaBroker, never()).start();
     }
 
@@ -106,7 +106,7 @@ public class ReplicaRoleManagementBrokerTest {
 
         replicaRoleManagementBroker.start();
 
-        verify(sourceBroker).start(any());
+        verify(sourceBroker).start(any(), anyBoolean());
         verify(sourceBroker, never()).start();
     }
 
@@ -118,7 +118,7 @@ public class ReplicaRoleManagementBrokerTest {
 
         replicaRoleManagementBroker.start();
 
-        verify(sourceBroker).start(any());
+        verify(sourceBroker).start(any(), anyBoolean());
         verify(replicaBroker, never()).start();
     }
 
@@ -130,7 +130,7 @@ public class ReplicaRoleManagementBrokerTest {
 
         replicaRoleManagementBroker.start();
 
-        verify(sourceBroker).start(any());
+        verify(sourceBroker).start(any(), anyBoolean());
         verify(sourceBroker, never()).start();
     }
 
