@@ -21,21 +21,22 @@ import org.apache.activemq.broker.ConnectionContext;
 import org.apache.activemq.broker.region.Destination;
 import org.apache.activemq.broker.region.DestinationInterceptor;
 import org.apache.activemq.command.ActiveMQDestination;
+import org.apache.activemq.replica.source.ReplicaEventReplicator;
 import org.apache.activemq.replica.source.ReplicaSourceBroker;
 
 public class ReplicaDestinationInterceptor implements DestinationInterceptor {
 
-    private final ReplicaSourceBroker sourceBroker;
+    private final ReplicaEventReplicator replicaEventReplicator;
     private final ReplicaRoleManagementBroker roleManagementBroker;
 
-    public ReplicaDestinationInterceptor(ReplicaSourceBroker sourceBroker, ReplicaRoleManagementBroker roleManagementBroker) {
-        this.sourceBroker = sourceBroker;
+    public ReplicaDestinationInterceptor(ReplicaEventReplicator replicaEventReplicator, ReplicaRoleManagementBroker roleManagementBroker) {
+        this.replicaEventReplicator = replicaEventReplicator;
         this.roleManagementBroker = roleManagementBroker;
     }
 
     @Override
     public Destination intercept(Destination destination) {
-        return new ReplicaDestinationFilter(destination, sourceBroker, roleManagementBroker);
+        return new ReplicaDestinationFilter(destination, replicaEventReplicator, roleManagementBroker);
     }
 
     @Override

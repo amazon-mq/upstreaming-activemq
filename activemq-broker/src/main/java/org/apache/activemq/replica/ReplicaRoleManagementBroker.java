@@ -33,6 +33,7 @@ import org.apache.activemq.command.TransactionId;
 import org.apache.activemq.replica.jmx.ReplicaJmxBroker;
 import org.apache.activemq.replica.jmx.ReplicaStatistics;
 import org.apache.activemq.replica.replica.ReplicaBroker;
+import org.apache.activemq.replica.source.ReplicaEventReplicator;
 import org.apache.activemq.replica.source.ReplicaSequencer;
 import org.apache.activemq.replica.source.ReplicaSourceBroker;
 import org.apache.activemq.replica.source.ReplicationMessageProducer;
@@ -58,6 +59,7 @@ public class ReplicaRoleManagementBroker extends MutableBrokerFilter implements 
     private final ReplicaJmxBroker jmxBroker;
     private final ReplicaPolicy replicaPolicy;
     private final ClassLoader contextClassLoader;
+    private final ReplicaEventReplicator replicaEventReplicator;
     private ReplicaRole role;
     private final ReplicaStatistics replicaStatistics;
     private final ReplicaReplicationDestinationSupplier destinationSupplier;
@@ -89,10 +91,11 @@ public class ReplicaRoleManagementBroker extends MutableBrokerFilter implements 
         replicaInternalMessageProducer = new ReplicaInternalMessageProducer(jmxBroker);
         ReplicationMessageProducer replicationMessageProducer =
                 new ReplicationMessageProducer(replicaInternalMessageProducer, destinationSupplier);
+        replicaEventReplicator = new ReplicaEventReplicator(jmxBroker, replicationMessageProducer);
         ReplicaSequencer replicaSequencer = new ReplicaSequencer(jmxBroker, destinationSupplier, replicaInternalMessageProducer,
                 replicationMessageProducer, replicaPolicy, replicaStatistics);
 
-        sourceBroker = buildSourceBroker(replicationMessageProducer, replicaSequencer, destinationSupplier);
+        sourceBroker = buildSourceBroker(replicaEventReplicator, replicaSequencer, destinationSupplier);
         replicaBroker = buildReplicaBroker(destinationSupplier);
 
         addInterceptor4CompositeQueues();
@@ -193,14 +196,14 @@ public class ReplicaRoleManagementBroker extends MutableBrokerFilter implements 
         }
     }
 
-    private ReplicaSourceBroker buildSourceBroker(ReplicationMessageProducer replicationMessageProducer,
-            ReplicaSequencer replicaSequencer, ReplicaReplicationDestinationSupplier queueProvider) {
-        return new ReplicaSourceBroker(jmxBroker, this, replicationMessageProducer, replicaSequencer,
-                queueProvider, replicaPolicy);
+    private ReplicaSourceBroker buildSourceBroker(ReplicaEventReplicator replicaEventReplicator,
+            ReplicaSequencer replicaSequencer, ReplicaReplicationDestinationSupplier destinationSupplier) {
+        return new ReplicaSourceBroker(jmxBroker, this, replicaEventReplicator, replicaSequencer,
+                destinationSupplier, replicaPolicy);
     }
 
-    private ReplicaBroker buildReplicaBroker(ReplicaReplicationDestinationSupplier queueProvider) {
-        return new ReplicaBroker(jmxBroker, this, queueProvider, replicaPolicy, replicaStatistics);
+    private ReplicaBroker buildReplicaBroker(ReplicaReplicationDestinationSupplier destinationSupplier) {
+        return new ReplicaBroker(jmxBroker, this, destinationSupplier, replicaPolicy, replicaStatistics);
     }
 
     private void addInterceptor4CompositeQueues() {
@@ -208,7 +211,7 @@ public class ReplicaRoleManagementBroker extends MutableBrokerFilter implements 
         final CompositeDestinationInterceptor compositeInterceptor = (CompositeDestinationInterceptor) regionBroker.getDestinationInterceptor();
         DestinationInterceptor[] interceptors = compositeInterceptor.getInterceptors();
         interceptors = Arrays.copyOf(interceptors, interceptors.length + 1);
-        interceptors[interceptors.length - 1] = new ReplicaDestinationInterceptor(sourceBroker, this);
+        interceptors[interceptors.length - 1] = new ReplicaDestinationInterceptor(replicaEventReplicator, this);
         compositeInterceptor.setInterceptors(interceptors);
     }
     
