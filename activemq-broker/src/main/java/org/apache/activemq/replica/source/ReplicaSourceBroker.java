@@ -38,6 +38,7 @@ import org.apache.activemq.replica.MutativeRoleBroker;
 import org.apache.activemq.replica.ReplicaPolicy;
 import org.apache.activemq.replica.ReplicaReplicationDestinationSupplier;
 import org.apache.activemq.replica.ReplicaRoleManagement;
+import org.apache.activemq.replica.source.resync.ReplicaResynchronizer;
 import org.apache.activemq.replica.util.ReplicaEventType;
 import org.apache.activemq.replica.util.ReplicaRole;
 import org.apache.activemq.replica.util.ReplicaSupport;

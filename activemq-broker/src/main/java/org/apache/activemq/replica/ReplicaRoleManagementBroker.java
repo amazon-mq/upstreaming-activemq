@@ -34,7 +34,7 @@ import org.apache.activemq.replica.jmx.ReplicaJmxBroker;
 import org.apache.activemq.replica.jmx.ReplicaStatistics;
 import org.apache.activemq.replica.replica.ReplicaBroker;
 import org.apache.activemq.replica.source.ReplicaEventReplicator;
-import org.apache.activemq.replica.source.ReplicaResynchronizer;
+import org.apache.activemq.replica.source.resync.ReplicaResynchronizer;
 import org.apache.activemq.replica.source.ReplicaSequencer;
 import org.apache.activemq.replica.source.ReplicaSourceBroker;
 import org.apache.activemq.replica.source.ReplicationMessageProducer;
