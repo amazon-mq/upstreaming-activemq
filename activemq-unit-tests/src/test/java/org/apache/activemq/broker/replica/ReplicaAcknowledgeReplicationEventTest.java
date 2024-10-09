@@ -272,7 +272,7 @@ public class ReplicaAcknowledgeReplicationEventTest extends ReplicaPluginTestSup
         ReplicaPlugin replicaPlugin = new ReplicaPlugin() {
             @Override
             public Broker installPlugin(final Broker broker) {
-                return new ReplicaRoleManagementBroker(new ReplicaJmxBroker(broker, replicaPolicy), mockReplicaPolicy, ReplicaRole.replica, new ReplicaStatistics());
+                return new ReplicaRoleManagementBroker(new ReplicaJmxBroker(broker, replicaPolicy), mockReplicaPolicy, ReplicaRole.replica, false, new ReplicaStatistics());
             }
         };
         replicaPlugin.setRole(ReplicaRole.replica);

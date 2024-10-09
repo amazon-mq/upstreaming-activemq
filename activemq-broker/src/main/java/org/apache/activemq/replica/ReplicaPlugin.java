@@ -55,6 +55,8 @@ public class ReplicaPlugin extends BrokerPluginSupport {
 
     protected ReplicaRole role = ReplicaRole.source;
 
+    protected boolean resyncBrokersOnStart;
+
     protected ReplicaPolicy replicaPolicy = new ReplicaPolicy();
 
     private ReplicationView replicationView;
@@ -102,7 +104,8 @@ public class ReplicaPlugin extends BrokerPluginSupport {
         interceptors[interceptors.length - 1] = new ReplicaAdvisorySuppressor();
         compositeInterceptor.setInterceptors(interceptors);
 
-        replicaRoleManagementBroker = new ReplicaRoleManagementBroker(new ReplicaJmxBroker(broker, replicaPolicy), replicaPolicy, role, replicaStatistics);
+        replicaRoleManagementBroker = new ReplicaRoleManagementBroker(new ReplicaJmxBroker(broker, replicaPolicy),
+                replicaPolicy, role, resyncBrokersOnStart, replicaStatistics);
 
         return new ReplicaAuthorizationBroker(replicaRoleManagementBroker);
     }
@@ -251,5 +254,12 @@ public class ReplicaPlugin extends BrokerPluginSupport {
         }
 
         replicaRoleManagementBroker.switchRole(role, force);
+    }
+
+    /**
+     * @org.apache.xbean.Property propertyEditor="com.sun.beans.editors.StringEditor"
+     */
+    public void setResyncBrokersOnStart(boolean resyncBrokersOnStart) {
+        this.resyncBrokersOnStart = resyncBrokersOnStart;
     }
 }
