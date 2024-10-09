@@ -45,7 +45,7 @@ import org.apache.activemq.replica.util.ReplicaEventSerializer;
 import org.apache.activemq.replica.util.ReplicaEventType;
 import org.apache.activemq.replica.util.ReplicaInternalMessageProducer;
 import org.apache.activemq.replica.ReplicaPolicy;
-import org.apache.activemq.replica.ReplicaReplicationQueueSupplier;
+import org.apache.activemq.replica.ReplicaReplicationDestinationSupplier;
 import org.apache.activemq.replica.util.ReplicaRole;
 import org.apache.activemq.replica.jmx.ReplicaStatistics;
 import org.apache.activemq.replica.util.ReplicaSupport;
@@ -92,7 +92,7 @@ public class ReplicaBrokerEventListener implements MessageListener {
     BigInteger sequence;
     MessageId sequenceMessageId;
 
-    ReplicaBrokerEventListener(ReplicaBroker replicaBroker, ReplicaReplicationQueueSupplier queueProvider,
+    ReplicaBrokerEventListener(ReplicaBroker replicaBroker, ReplicaReplicationDestinationSupplier destinationSupplier,
             PeriodAcknowledge acknowledgeCallback, ReplicaPolicy replicaPolicy, ReplicaStatistics replicaStatistics) {
         this.replicaBroker = requireNonNull(replicaBroker);
         this.broker = requireNonNull(replicaBroker.getNext());
@@ -108,7 +108,7 @@ public class ReplicaBrokerEventListener implements MessageListener {
         createTransactionMapIfNotExist();
 
         this.sequenceStorage = new ReplicaSequenceStorage(broker,
-                queueProvider, replicaInternalMessageProducer, SEQUENCE_NAME);
+                destinationSupplier, replicaInternalMessageProducer, SEQUENCE_NAME);
         this.transactionBroker = (TransactionBroker) broker.getAdaptor(TransactionBroker.class);
 
         memoryUsage = broker.getBrokerService().getSystemUsage().getMemoryUsage();

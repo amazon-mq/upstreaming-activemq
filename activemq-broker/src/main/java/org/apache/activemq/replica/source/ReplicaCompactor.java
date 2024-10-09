@@ -33,7 +33,7 @@ import org.apache.activemq.command.MessageId;
 import org.apache.activemq.command.TransactionId;
 import org.apache.activemq.replica.util.DestinationExtractor;
 import org.apache.activemq.replica.util.ReplicaEventType;
-import org.apache.activemq.replica.ReplicaReplicationQueueSupplier;
+import org.apache.activemq.replica.ReplicaReplicationDestinationSupplier;
 import org.apache.activemq.replica.jmx.ReplicaStatistics;
 import org.apache.activemq.replica.util.ReplicaSupport;
 import org.apache.activemq.util.JMSExceptionSupport;
@@ -57,22 +57,22 @@ public class ReplicaCompactor {
     private static final Logger logger = LoggerFactory.getLogger(ReplicaCompactor.class);
 
     private final Broker broker;
-    private final ReplicaReplicationQueueSupplier queueProvider;
+    private final ReplicaReplicationDestinationSupplier destinationSupplier;
     private final PrefetchSubscription subscription;
     private final int additionalMessagesLimit;
     private final ReplicaStatistics replicaStatistics;
 
     private final Queue intermediateQueue;
 
-    public ReplicaCompactor(Broker broker, ReplicaReplicationQueueSupplier queueProvider, PrefetchSubscription subscription,
+    public ReplicaCompactor(Broker broker, ReplicaReplicationDestinationSupplier destinationSupplier, PrefetchSubscription subscription,
             int additionalMessagesLimit, ReplicaStatistics replicaStatistics) {
         this.broker = broker;
-        this.queueProvider = queueProvider;
+        this.destinationSupplier = destinationSupplier;
         this.subscription = subscription;
         this.additionalMessagesLimit = additionalMessagesLimit;
         this.replicaStatistics = replicaStatistics;
 
-        intermediateQueue = broker.getDestinations(queueProvider.getIntermediateQueue()).stream().findFirst()
+        intermediateQueue = broker.getDestinations(destinationSupplier.getIntermediateQueue()).stream().findFirst()
                 .map(DestinationExtractor::extractQueue).orElseThrow();
     }
 
@@ -197,7 +197,7 @@ public class ReplicaCompactor {
                 messageAck.setTransactionId(transactionId);
                 messageAck.setMessageCount(1);
                 messageAck.setAckType(MessageAck.INDIVIDUAL_ACK_TYPE);
-                messageAck.setDestination(queueProvider.getIntermediateQueue());
+                messageAck.setDestination(destinationSupplier.getIntermediateQueue());
 
                 broker.acknowledge(consumerExchange, messageAck);
             }

@@ -44,7 +44,7 @@ import org.apache.activemq.replica.util.ReplicaEventSerializer;
 import org.apache.activemq.replica.util.ReplicaEventType;
 import org.apache.activemq.replica.util.ReplicaInternalMessageProducer;
 import org.apache.activemq.replica.ReplicaPolicy;
-import org.apache.activemq.replica.ReplicaReplicationQueueSupplier;
+import org.apache.activemq.replica.ReplicaReplicationDestinationSupplier;
 import org.apache.activemq.replica.jmx.ReplicaStatistics;
 import org.apache.activemq.replica.util.ReplicaSupport;
 import org.apache.activemq.replica.storage.ReplicaRecoverySequenceStorage;
@@ -80,7 +80,7 @@ public class ReplicaSequencer {
     private static final String RESTORE_SEQUENCE_NAME = "primaryRestoreSeq";
 
     private final Broker broker;
-    private final ReplicaReplicationQueueSupplier queueProvider;
+    private final ReplicaReplicationDestinationSupplier destinationSupplier;
     private final ReplicaInternalMessageProducer replicaInternalMessageProducer;
     private final ReplicationMessageProducer replicationMessageProducer;
     private final ReplicaEventSerializer eventSerializer = new ReplicaEventSerializer();
@@ -119,12 +119,12 @@ public class ReplicaSequencer {
 
     private final AtomicBoolean initialized = new AtomicBoolean();
 
-    public ReplicaSequencer(Broker broker, ReplicaReplicationQueueSupplier queueProvider,
+    public ReplicaSequencer(Broker broker, ReplicaReplicationDestinationSupplier destinationSupplier,
             ReplicaInternalMessageProducer replicaInternalMessageProducer,
             ReplicationMessageProducer replicationMessageProducer, ReplicaPolicy replicaPolicy, 
             ReplicaStatistics replicaStatistics) {
         this.broker = broker;
-        this.queueProvider = queueProvider;
+        this.destinationSupplier = destinationSupplier;
         this.replicaInternalMessageProducer = replicaInternalMessageProducer;
         this.replicationMessageProducer = replicationMessageProducer;
         this.replicaAckHelper = new ReplicaAckHelper(broker);
@@ -144,20 +144,20 @@ public class ReplicaSequencer {
         ackTaskRunner = taskRunnerFactory.createTaskRunner(this::iterateAck, "ReplicationPlugin.Sequencer.Ack");
         sendTaskRunner = taskRunnerFactory.createTaskRunner(this::iterateSend, "ReplicationPlugin.Sequencer.Send");
 
-        Queue intermediateQueue = broker.getDestinations(queueProvider.getIntermediateQueue()).stream().findFirst()
+        Queue intermediateQueue = broker.getDestinations(destinationSupplier.getIntermediateQueue()).stream().findFirst()
                 .map(DestinationExtractor::extractQueue).orElseThrow();
-        mainQueue = broker.getDestinations(queueProvider.getMainQueue()).stream().findFirst()
+        mainQueue = broker.getDestinations(destinationSupplier.getMainQueue()).stream().findFirst()
                 .map(DestinationExtractor::extractQueue).orElseThrow();
 
         if (subscriptionConnectionContext == null) {
             subscriptionConnectionContext = createSubscriptionConnectionContext();
         }
         if (sequenceStorage == null) {
-            sequenceStorage = new ReplicaSequenceStorage(broker, queueProvider, replicaInternalMessageProducer,
+            sequenceStorage = new ReplicaSequenceStorage(broker, destinationSupplier, replicaInternalMessageProducer,
                     SEQUENCE_NAME);
         }
         if (restoreSequenceStorage == null) {
-            restoreSequenceStorage = new ReplicaRecoverySequenceStorage(broker, queueProvider,
+            restoreSequenceStorage = new ReplicaRecoverySequenceStorage(broker, destinationSupplier,
                     replicaInternalMessageProducer, RESTORE_SEQUENCE_NAME);
         }
 
@@ -167,10 +167,10 @@ public class ReplicaSequencer {
         ConsumerInfo consumerInfo = new ConsumerInfo();
         consumerInfo.setConsumerId(consumerId);
         consumerInfo.setPrefetchSize(ReplicaSupport.INTERMEDIATE_QUEUE_PREFETCH_SIZE);
-        consumerInfo.setDestination(queueProvider.getIntermediateQueue());
+        consumerInfo.setDestination(destinationSupplier.getIntermediateQueue());
         subscription = (PrefetchSubscription) broker.addConsumer(subscriptionConnectionContext, consumerInfo);
 
-        replicaCompactor = new ReplicaCompactor(broker, queueProvider, subscription,
+        replicaCompactor = new ReplicaCompactor(broker, destinationSupplier, subscription,
                 replicaPolicy.getCompactorAdditionalMessagesLimit(), replicaStatistics);
 
         intermediateQueue.iterate();
@@ -467,7 +467,7 @@ public class ReplicaSequencer {
                     ack.setTransactionId(transactionId);
                     ack.setMessageID(new MessageId(messageId));
                     ack.setAckType(MessageAck.INDIVIDUAL_ACK_TYPE);
-                    ack.setDestination(queueProvider.getIntermediateQueue());
+                    ack.setDestination(destinationSupplier.getIntermediateQueue());
                     broker.acknowledge(consumerExchange, ack);
                 }
 
@@ -633,7 +633,7 @@ public class ReplicaSequencer {
             ActiveMQMessage message = (ActiveMQMessage) originalMessage.copy();
 
             message.setStringProperty(ReplicaSupport.SEQUENCE_PROPERTY, sequence.toString());
-            message.setDestination(queueProvider.getMainQueue());
+            message.setDestination(destinationSupplier.getMainQueue());
             message.setTransactionId(transactionId);
             message.setPersistent(false);
             replicaInternalMessageProducer.sendForcingFlowControl(connectionContext, message);

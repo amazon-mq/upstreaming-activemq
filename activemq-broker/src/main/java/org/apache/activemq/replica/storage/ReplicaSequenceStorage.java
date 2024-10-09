@@ -20,15 +20,15 @@ import org.apache.activemq.broker.Broker;
 import org.apache.activemq.broker.ConnectionContext;
 import org.apache.activemq.command.ActiveMQTextMessage;
 import org.apache.activemq.replica.util.ReplicaInternalMessageProducer;
-import org.apache.activemq.replica.ReplicaReplicationQueueSupplier;
+import org.apache.activemq.replica.ReplicaReplicationDestinationSupplier;
 
 import java.util.List;
 
 public class ReplicaSequenceStorage extends ReplicaBaseSequenceStorage {
 
-    public ReplicaSequenceStorage(Broker broker, ReplicaReplicationQueueSupplier queueProvider,
+    public ReplicaSequenceStorage(Broker broker, ReplicaReplicationDestinationSupplier destinationSupplier,
             ReplicaInternalMessageProducer replicaInternalMessageProducer, String sequenceName) {
-        super(broker, queueProvider, replicaInternalMessageProducer, sequenceName);
+        super(broker, destinationSupplier, replicaInternalMessageProducer, sequenceName);
     }
 
     public String initialize(ConnectionContext connectionContext) throws Exception {

@@ -35,13 +35,13 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-public class ReplicaReplicationQueueSupplierTest {
+public class ReplicaReplicationDestinationSupplierTest {
 
     private final Broker broker = mock(Broker.class);
     private final ConnectionContext connectionContext = mock(ConnectionContext.class);
     private final BrokerService brokerService = mock(BrokerService.class);
 
-    private final ReplicaReplicationQueueSupplier supplier = new ReplicaReplicationQueueSupplier(broker);
+    private final ReplicaReplicationDestinationSupplier supplier = new ReplicaReplicationDestinationSupplier(broker);
 
     @Before
     public void setUp() throws Exception {

@@ -25,7 +25,7 @@ import org.apache.activemq.replica.util.ReplicaEvent;
 import org.apache.activemq.replica.util.ReplicaEventSerializer;
 import org.apache.activemq.replica.util.ReplicaEventType;
 import org.apache.activemq.replica.util.ReplicaInternalMessageProducer;
-import org.apache.activemq.replica.ReplicaReplicationQueueSupplier;
+import org.apache.activemq.replica.ReplicaReplicationDestinationSupplier;
 import org.apache.activemq.replica.util.ReplicaSupport;
 import org.apache.activemq.util.IdGenerator;
 import org.apache.activemq.util.LongSequenceGenerator;
@@ -39,25 +39,25 @@ public class ReplicationMessageProducer {
     private final IdGenerator idGenerator = new IdGenerator();
     private final ProducerId replicationProducerId = new ProducerId();
     private final ReplicaInternalMessageProducer replicaInternalMessageProducer;
-    private final ReplicaReplicationQueueSupplier queueProvider;
+    private final ReplicaReplicationDestinationSupplier destinationSupplier;
     private final ReplicaEventSerializer eventSerializer = new ReplicaEventSerializer();
     private final LongSequenceGenerator eventMessageIdGenerator = new LongSequenceGenerator();
     
     public ReplicationMessageProducer(ReplicaInternalMessageProducer replicaInternalMessageProducer,
-            ReplicaReplicationQueueSupplier queueProvider) {
+            ReplicaReplicationDestinationSupplier destinationSupplier) {
         this.replicaInternalMessageProducer = replicaInternalMessageProducer;
-        this.queueProvider = queueProvider;
+        this.destinationSupplier = destinationSupplier;
         replicationProducerId.setConnectionId(idGenerator.generateId());
     }
 
     void enqueueIntermediateReplicaEvent(ConnectionContext connectionContext, ReplicaEvent event) throws Exception {
         synchronized (ReplicaSupport.INTERMEDIATE_QUEUE_MUTEX) {
-            enqueueReplicaEvent(connectionContext, event, true, queueProvider.getIntermediateQueue());
+            enqueueReplicaEvent(connectionContext, event, true, destinationSupplier.getIntermediateQueue());
         }
     }
 
     void enqueueMainReplicaEvent(ConnectionContext connectionContext, ReplicaEvent event) throws Exception {
-        enqueueReplicaEvent(connectionContext, event, false, queueProvider.getMainQueue());
+        enqueueReplicaEvent(connectionContext, event, false, destinationSupplier.getMainQueue());
     }
 
     private void enqueueReplicaEvent(ConnectionContext connectionContext, ReplicaEvent event,

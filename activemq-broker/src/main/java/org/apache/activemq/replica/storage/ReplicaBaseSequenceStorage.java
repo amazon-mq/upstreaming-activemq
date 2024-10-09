@@ -21,7 +21,7 @@ import org.apache.activemq.broker.BrokerStoppedException;
 import org.apache.activemq.broker.ConnectionContext;
 import org.apache.activemq.command.ActiveMQTextMessage;
 import org.apache.activemq.replica.util.ReplicaInternalMessageProducer;
-import org.apache.activemq.replica.ReplicaReplicationQueueSupplier;
+import org.apache.activemq.replica.ReplicaReplicationDestinationSupplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,9 +34,9 @@ public abstract class ReplicaBaseSequenceStorage extends ReplicaBaseStorage {
     static final String SEQUENCE_NAME_PROPERTY = "SequenceName";
     private final String sequenceName;
 
-    public ReplicaBaseSequenceStorage(Broker broker, ReplicaReplicationQueueSupplier queueProvider,
+    public ReplicaBaseSequenceStorage(Broker broker, ReplicaReplicationDestinationSupplier destinationSupplier,
             ReplicaInternalMessageProducer replicaInternalMessageProducer, String sequenceName) {
-        super(broker, replicaInternalMessageProducer, queueProvider.getSequenceQueue(),
+        super(broker, replicaInternalMessageProducer, destinationSupplier.getSequenceQueue(),
                 "ReplicationPlugin.ReplicaSequenceStorage",
                 String.format("%s LIKE '%s'", SEQUENCE_NAME_PROPERTY, sequenceName));
         this.sequenceName = requireNonNull(sequenceName);
