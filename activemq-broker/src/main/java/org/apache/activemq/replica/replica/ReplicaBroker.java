@@ -32,7 +32,7 @@ import org.apache.activemq.command.ConsumerId;
 import org.apache.activemq.command.MessageDispatch;
 import org.apache.activemq.replica.MutativeRoleBroker;
 import org.apache.activemq.replica.ReplicaPolicy;
-import org.apache.activemq.replica.ReplicaReplicationQueueSupplier;
+import org.apache.activemq.replica.ReplicaReplicationDestinationSupplier;
 import org.apache.activemq.replica.util.ReplicaRole;
 import org.apache.activemq.replica.ReplicaRoleManagement;
 import org.apache.activemq.replica.jmx.ReplicaStatistics;
@@ -61,7 +61,7 @@ public class ReplicaBroker extends MutativeRoleBroker {
     private final AtomicReference<ActiveMQConnection> connection = new AtomicReference<>();
     private final AtomicReference<ActiveMQSession> connectionSession = new AtomicReference<>();
     private final AtomicReference<ActiveMQMessageConsumer> eventConsumer = new AtomicReference<>();
-    private final ReplicaReplicationQueueSupplier queueProvider;
+    private final ReplicaReplicationDestinationSupplier destinationSupplier;
     private final ReplicaPolicy replicaPolicy;
     private final PeriodAcknowledge periodAcknowledgeCallBack;
     private final ReplicaStatistics replicaStatistics;
@@ -69,10 +69,10 @@ public class ReplicaBroker extends MutativeRoleBroker {
     private ScheduledFuture<?> replicationScheduledFuture;
     private ScheduledFuture<?> ackPollerScheduledFuture;
 
-    public ReplicaBroker(Broker broker, ReplicaRoleManagement management, ReplicaReplicationQueueSupplier queueProvider,
+    public ReplicaBroker(Broker broker, ReplicaRoleManagement management, ReplicaReplicationDestinationSupplier destinationSupplier,
             ReplicaPolicy replicaPolicy, ReplicaStatistics replicaStatistics) {
         super(broker, management);
-        this.queueProvider = queueProvider;
+        this.destinationSupplier = destinationSupplier;
         this.replicaPolicy = replicaPolicy;
         this.periodAcknowledgeCallBack = new PeriodAcknowledge(replicaPolicy);
         this.replicaStatistics = replicaStatistics;
@@ -123,7 +123,7 @@ public class ReplicaBroker extends MutativeRoleBroker {
 
     private void init(ReplicaRole role) {
         logger.info("Initializing Replica broker");
-        queueProvider.initializeSequenceQueue();
+        destinationSupplier.initializeSequenceQueue();
         replicationScheduledFuture = brokerConnectionPoller.scheduleAtFixedRate(() -> beginReplicationIdempotent(role), 5, 5, TimeUnit.SECONDS);
         ackPollerScheduledFuture = periodicAckPoller.scheduleAtFixedRate(() -> {
             synchronized (periodAcknowledgeCallBack) {
@@ -134,7 +134,7 @@ public class ReplicaBroker extends MutativeRoleBroker {
                 }
             }
         }, replicaPolicy.getReplicaAckPeriod(), replicaPolicy.getReplicaAckPeriod(), TimeUnit.MILLISECONDS);
-        messageListener = new ReplicaBrokerEventListener(this, queueProvider, periodAcknowledgeCallBack, replicaPolicy, replicaStatistics);
+        messageListener = new ReplicaBrokerEventListener(this, destinationSupplier, periodAcknowledgeCallBack, replicaPolicy, replicaStatistics);
     }
 
     private void deinitialize() throws Exception {

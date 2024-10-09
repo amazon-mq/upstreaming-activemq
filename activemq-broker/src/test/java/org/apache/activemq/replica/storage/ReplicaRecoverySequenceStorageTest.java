@@ -25,7 +25,7 @@ import org.apache.activemq.command.ActiveMQQueue;
 import org.apache.activemq.command.ActiveMQTextMessage;
 import org.apache.activemq.command.MessageId;
 import org.apache.activemq.replica.util.ReplicaInternalMessageProducer;
-import org.apache.activemq.replica.ReplicaReplicationQueueSupplier;
+import org.apache.activemq.replica.ReplicaReplicationDestinationSupplier;
 import org.apache.activemq.replica.util.ReplicaSupport;
 import org.junit.Before;
 import org.junit.Test;
@@ -46,7 +46,7 @@ public class ReplicaRecoverySequenceStorageTest {
     private final static String SEQUENCE_NAME = "testSeq";
     private final ConnectionContext connectionContext = mock(ConnectionContext.class);
     private final Broker broker = mock(Broker.class);
-    private final ReplicaReplicationQueueSupplier queueProvider = mock(ReplicaReplicationQueueSupplier.class);
+    private final ReplicaReplicationDestinationSupplier queueProvider = mock(ReplicaReplicationDestinationSupplier.class);
     private final Queue sequenceQueue = mock(Queue.class);
     private final PrefetchSubscription subscription = mock(PrefetchSubscription.class);
     private final ActiveMQQueue sequenceQueueDestination = new ActiveMQQueue(ReplicaSupport.SEQUENCE_REPLICATION_QUEUE_NAME);
