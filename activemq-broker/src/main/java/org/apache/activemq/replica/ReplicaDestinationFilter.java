@@ -23,18 +23,19 @@ import org.apache.activemq.broker.region.DestinationFilter;
 import org.apache.activemq.broker.region.virtual.CompositeDestinationFilter;
 import org.apache.activemq.command.Message;
 import org.apache.activemq.command.TransactionId;
+import org.apache.activemq.replica.source.ReplicaEventReplicator;
 import org.apache.activemq.replica.source.ReplicaSourceBroker;
 import org.apache.activemq.replica.util.ReplicaRole;
 
 public class ReplicaDestinationFilter extends DestinationFilter {
     private final boolean nextIsComposite;
-    private final ReplicaSourceBroker sourceBroker;
+    private final ReplicaEventReplicator replicaEventReplicator;
     private final ReplicaRoleManagementBroker roleManagementBroker;
 
-    public ReplicaDestinationFilter(Destination next, ReplicaSourceBroker sourceBroker, ReplicaRoleManagementBroker roleManagementBroker) {
+    public ReplicaDestinationFilter(Destination next, ReplicaEventReplicator replicaEventReplicator, ReplicaRoleManagementBroker roleManagementBroker) {
         super(next);
         this.nextIsComposite = this.next != null && this.next instanceof CompositeDestinationFilter;
-        this.sourceBroker = sourceBroker;
+        this.replicaEventReplicator = replicaEventReplicator;
         this.roleManagementBroker = roleManagementBroker;
     }
 
@@ -66,7 +67,7 @@ public class ReplicaDestinationFilter extends DestinationFilter {
 
     private void replicateSend(ProducerBrokerExchange producerExchange, Message messageSend) throws Exception {
         final ConnectionContext connectionContext = producerExchange.getConnectionContext();
-        if (!sourceBroker.needToReplicateSend(connectionContext, messageSend)) {
+        if (!replicaEventReplicator.needToReplicateSend(connectionContext, messageSend)) {
             return;
         }
 
@@ -75,7 +76,6 @@ public class ReplicaDestinationFilter extends DestinationFilter {
             transactionId = messageSend.getTransactionId();
         }
 
-        sourceBroker.replicateSend(connectionContext, messageSend, transactionId);
+        replicaEventReplicator.replicateSend(connectionContext, messageSend, transactionId);
     }
-
 }
