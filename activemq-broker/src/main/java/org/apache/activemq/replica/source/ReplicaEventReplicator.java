@@ -454,18 +454,25 @@ public class ReplicaEventReplicator {
         );
     }
 
-    public void enqueueResetEvent(ConnectionContext connectionContext, TransactionId tid) {
-        try {
-            enqueueReplicaEvent(
-                    connectionContext,
-                    new ReplicaEvent()
-                            .setEventType(ReplicaEventType.RESET)
-                            .setTransactionId(tid)
-                            .setEventData(eventSerializer.serializeReplicationData(null))
-            );
-        } catch (Exception e) {
-            logger.error("Failed to send heart beat message", e);
-        }
+    public void enqueueResetEvent(ConnectionContext connectionContext, TransactionId tid) throws Exception {
+        enqueueReplicaEvent(
+                connectionContext,
+                new ReplicaEvent()
+                        .setEventType(ReplicaEventType.RESET)
+                        .setTransactionId(tid)
+                        .setEventData(eventSerializer.serializeReplicationData(null))
+        );
+    }
+
+    public void enqueueResyncDestinationsEvent(ConnectionContext connectionContext, ActiveMQDestination destinationType,
+            List<String> destinations) throws Exception {
+        enqueueReplicaEvent(
+                connectionContext,
+                new ReplicaEvent()
+                        .setEventType(ReplicaEventType.RESYNC_DESTINATIONS)
+                        .setEventData(eventSerializer.serializeReplicationData(destinationType))
+                        .setReplicationProperty(ReplicaSupport.DESTINATIONS_PROPERTY, destinations)
+        );
     }
 
     private void enqueueReplicaEvent(ConnectionContext connectionContext, ReplicaEvent event) throws Exception {
