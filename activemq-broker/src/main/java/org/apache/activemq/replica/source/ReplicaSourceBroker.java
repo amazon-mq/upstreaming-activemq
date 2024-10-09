@@ -379,7 +379,8 @@ public class ReplicaSourceBroker extends MutativeRoleBroker {
 
         try {
             super.acknowledge(consumerExchange, ack);
-            replicaEventReplicator.replicateAck(connectionContext, ack, subscription, transactionId, messageIdsToAck);
+            replicaEventReplicator.replicateAck(connectionContext, ack, subscription, transactionId, messageIdsToAck,
+                    connectionContext.getClientId());
             if (isInternalTransaction) {
                 super.commitTransaction(connectionContext, transactionId, true);
             }
