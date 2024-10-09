@@ -98,7 +98,7 @@ public class ReplicaEventReplicator {
         }
     }
 
-    void replicateDestinationCreation(ConnectionContext context, ActiveMQDestination destination) throws Exception {
+    public void replicateDestinationCreation(ConnectionContext context, ActiveMQDestination destination) throws Exception {
         if (!shouldReplicateDestination(destination)) {
             return;
         }
@@ -263,7 +263,7 @@ public class ReplicaEventReplicator {
     }
 
 
-    void replicateDestinationRemoval(ConnectionContext context, ActiveMQDestination destination) throws Exception {
+    public void replicateDestinationRemoval(ConnectionContext context, ActiveMQDestination destination) throws Exception {
         if (!isReplicatedDestination(destination)) {
             return;
         }
@@ -450,7 +450,7 @@ public class ReplicaEventReplicator {
         );
     }
 
-    void enqueueResetEvent(ConnectionContext connectionContext, TransactionId tid) {
+    public void enqueueResetEvent(ConnectionContext connectionContext, TransactionId tid) {
         try {
             enqueueReplicaEvent(
                     connectionContext,
