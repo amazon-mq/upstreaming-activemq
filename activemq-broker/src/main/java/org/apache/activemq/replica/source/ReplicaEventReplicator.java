@@ -263,8 +263,13 @@ public class ReplicaEventReplicator {
     }
 
 
-    public void replicateDestinationRemoval(ConnectionContext context, ActiveMQDestination destination) throws Exception {
-        if (!isReplicatedDestination(destination)) {
+    void replicateDestinationRemoval(ConnectionContext context, ActiveMQDestination destination) throws Exception {
+        replicateDestinationRemoval(context, destination, false);
+    }
+
+
+    public void replicateDestinationRemoval(ConnectionContext context, ActiveMQDestination destination, boolean force) throws Exception {
+        if (!force && !isReplicatedDestination(destination)) {
             return;
         }
         try {
