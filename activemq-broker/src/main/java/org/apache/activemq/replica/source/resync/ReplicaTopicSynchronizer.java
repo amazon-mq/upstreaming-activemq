@@ -25,6 +25,7 @@ import org.apache.activemq.command.ConsumerInfo;
 import org.apache.activemq.command.Message;
 import org.apache.activemq.command.MessageAck;
 import org.apache.activemq.command.MessageId;
+import org.apache.activemq.command.RemoveSubscriptionInfo;
 import org.apache.activemq.command.TransactionId;
 import org.apache.activemq.replica.source.ReplicaEventReplicator;
 import org.apache.activemq.replica.storage.ReplicaResynchronizationStorage;
@@ -42,40 +43,46 @@ import java.util.stream.Collectors;
 
 public class ReplicaTopicSynchronizer extends ReplicaDestinationSynchronizer {
 
-    private final List<SubscriptionKey> subscriptionKeys;
-    private final Map<SubscriptionKey, MessageId> lastUnackedMessages;
+    private final Map<DurableTopicSubscription, MessageId> lastUnackedMessages;
+    private final List<DurableTopicSubscription> durableTopicSubscriptions;
 
     private ReplicaTopicSynchronizer(Broker broker, ReplicaEventReplicator replicator, ReplicaResynchronizationStorage storage, ConnectionContext connectionContext,
-            ActiveMQTopic destination, MessageId restoreMessageId, List<SubscriptionKey> subscriptionKeys) throws Exception {
+            ActiveMQTopic destination, MessageId restoreMessageId, List<DurableTopicSubscription> durableTopicSubscriptions) throws Exception {
         super(broker, replicator, storage, connectionContext, destination, restoreMessageId);
-        this.subscriptionKeys = subscriptionKeys;
+        this.durableTopicSubscriptions = durableTopicSubscriptions;
         lastUnackedMessages = loadUnackedMessages();
     }
 
     static void resynchronize(Broker broker, ReplicaEventReplicator replicator, ReplicaResynchronizationStorage storage,
             ConnectionContext connectionContext, ActiveMQTopic destination, MessageId restoreMessageId) throws Exception {
-        List<SubscriptionKey> subscriptionKeys = broker.getDestinations(destination).stream().findFirst()
+        List<DurableTopicSubscription> durableTopicSubscriptions = broker.getDestinations(destination).stream().findFirst()
                 .map(DestinationExtractor::extractTopic)
                 .map(Topic::getDurableTopicSubs)
                 .stream()
                 .map(Map::values)
                 .flatMap(Collection::stream)
-                .map(DurableTopicSubscription::getSubscriptionKey)
                 .collect(Collectors.toList());
-        if (subscriptionKeys.isEmpty()) {
+        if (durableTopicSubscriptions.isEmpty()) {
             return;
         }
 
-        new ReplicaTopicSynchronizer(broker, replicator, storage, connectionContext, destination, restoreMessageId, subscriptionKeys).resynchronize();
+        new ReplicaTopicSynchronizer(broker, replicator, storage, connectionContext, destination, restoreMessageId, durableTopicSubscriptions).resynchronize();
     }
 
     @Override
     void preRecover() throws Exception {
-        for (SubscriptionKey subscriptionKey : subscriptionKeys) {
-            ConsumerInfo consumerInfo = new ConsumerInfo();
-            consumerInfo.setDestination(destination);
-            consumerInfo.setSubscriptionName(subscriptionKey.getSubscriptionName());
-            replicator.replicateAddConsumer(connectionContext, consumerInfo, subscriptionKey.getClientId());
+        for (DurableTopicSubscription sub : durableTopicSubscriptions) {
+            RemoveSubscriptionInfo info = new RemoveSubscriptionInfo();
+            info.setSubcriptionName(sub.getConsumerInfo().getSubscriptionName());
+            info.setConnectionId(sub.getContext().getConnectionId());
+            info.setClientId(sub.getContext().getClientId());
+            replicator.replicateRemoveSubscription(connectionContext, info);
+        }
+
+        super.preRecover();
+
+        for (DurableTopicSubscription sub : durableTopicSubscriptions) {
+            replicator.replicateAddConsumer(connectionContext, sub.getConsumerInfo(), sub.getContext().getClientId());
         }
     }
 
@@ -85,16 +92,16 @@ public class ReplicaTopicSynchronizer extends ReplicaDestinationSynchronizer {
         replicateAcksIfNeeded(tid, message.getMessageId());
     }
 
-    private Map<SubscriptionKey, MessageId> loadUnackedMessages() throws Exception {
-        Map<SubscriptionKey, MessageId> result = new HashMap<>();
-        for (SubscriptionKey subscriptionKey : subscriptionKeys) {
-            result.put(subscriptionKey, getNextMessageId(subscriptionKey));
+    private Map<DurableTopicSubscription, MessageId> loadUnackedMessages() throws Exception {
+        Map<DurableTopicSubscription, MessageId> result = new HashMap<>();
+        for (DurableTopicSubscription sub : durableTopicSubscriptions) {
+            result.put(sub, getNextMessageId(sub));
         }
         return result;
     }
 
     private void replicateAcksIfNeeded(TransactionId tid, MessageId currentMessageId) throws Exception {
-        for (Map.Entry<SubscriptionKey, MessageId> entry : lastUnackedMessages.entrySet()) {
+        for (Map.Entry<DurableTopicSubscription, MessageId> entry : lastUnackedMessages.entrySet()) {
             if (entry.getValue() == null) {
                 replicateAck(tid, currentMessageId, entry.getKey());
                 continue;
@@ -108,17 +115,18 @@ public class ReplicaTopicSynchronizer extends ReplicaDestinationSynchronizer {
         }
     }
 
-    private void replicateAck(TransactionId tid, MessageId messageId, SubscriptionKey subscriptionKey) throws Exception {
+    private void replicateAck(TransactionId tid, MessageId messageId, DurableTopicSubscription sub) throws Exception {
         MessageAck ack = new MessageAck();
+        ack.setConsumerId(sub.getConsumerInfo().getConsumerId());
         ack.setDestination(destination);
         ack.setMessageID(messageId);
         ack.setAckType(MessageAck.INDIVIDUAL_ACK_TYPE);
 
-        replicator.replicateAck(connectionContext, ack, subscriptionKey.getClientId(), subscriptionKey.getSubscriptionName(),
-                tid, List.of(messageId.toString()));
+        replicator.replicateAck(connectionContext, ack, sub, tid, List.of(messageId.toString()), sub.getContext().getClientId());
     }
 
-    private MessageId getNextMessageId(SubscriptionKey subscriptionKey) throws Exception {
+    private MessageId getNextMessageId(DurableTopicSubscription sub) throws Exception {
+        SubscriptionKey subscriptionKey = sub.getSubscriptionKey();
         SingleMessageRecoveryListener listener = new SingleMessageRecoveryListener();
         ((TopicMessageStore) messageStore).recoverNextMessages(subscriptionKey.getClientId(),
                 subscriptionKey.getSubscriptionName(), 1, listener);

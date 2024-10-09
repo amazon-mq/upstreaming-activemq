@@ -31,7 +31,7 @@ abstract class ReplicaDestinationSynchronizer implements ReplicaMessageRecoveryL
 
     private final Logger logger = LoggerFactory.getLogger(ReplicaDestinationSynchronizer.class);
 
-    private final Broker broker;
+    final Broker broker;
     final ReplicaEventReplicator replicator;
     final ConnectionContext connectionContext;
     final ActiveMQDestination destination;
@@ -51,9 +51,6 @@ abstract class ReplicaDestinationSynchronizer implements ReplicaMessageRecoveryL
     void resynchronize() throws Exception {
         logger.info("Resyncronizing: " + destination);
 
-        replicator.replicateDestinationRemoval(connectionContext, destination, true);
-        replicator.replicateDestinationCreation(connectionContext, destination);
-
         preRecover();
 
         messageStore.recover(listener);
@@ -61,5 +58,7 @@ abstract class ReplicaDestinationSynchronizer implements ReplicaMessageRecoveryL
     }
 
     void preRecover() throws Exception {
+        replicator.replicateDestinationRemoval(connectionContext, destination, true);
+        replicator.replicateDestinationCreation(connectionContext, destination);
     }
 }
