@@ -39,7 +39,11 @@ public class ReplicaBaseObjectStorage<T extends Serializable> extends ReplicaBas
     @SuppressWarnings("unchecked")
     public List<T> initialize(ConnectionContext connectionContext, boolean keepOnlyOneMessage) throws Exception {
         List<T> result = new ArrayList<>();
-        for (Message message : super.initializeBase(connectionContext, keepOnlyOneMessage)) {
+        List<Message> messages = super.initializeBase(connectionContext, keepOnlyOneMessage);
+        for (Message message : messages) {
+            if (!(message instanceof ActiveMQObjectMessage)) {
+                throw new ReplicaStorageFormatException("Message in " + destination + " has wrong format", messages);
+            }
             result.add((T) ((ActiveMQObjectMessage) message).getObject());
         }
         return result;

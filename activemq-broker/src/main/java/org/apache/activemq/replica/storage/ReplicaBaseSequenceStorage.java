@@ -17,16 +17,16 @@
 package org.apache.activemq.replica.storage;
 
 import org.apache.activemq.broker.Broker;
-import org.apache.activemq.broker.BrokerStoppedException;
 import org.apache.activemq.broker.ConnectionContext;
 import org.apache.activemq.command.ActiveMQMessage;
-import org.apache.activemq.command.ActiveMQTextMessage;
 import org.apache.activemq.replica.util.ReplicaInternalMessageProducer;
 import org.apache.activemq.replica.ReplicaReplicationDestinationSupplier;
 
+import java.io.Serializable;
+
 import static java.util.Objects.requireNonNull;
 
-public abstract class ReplicaBaseSequenceStorage extends ReplicaBaseTextStorage {
+public abstract class ReplicaBaseSequenceStorage <T extends Serializable> extends ReplicaBaseObjectStorage<T> {
 
     static final String SEQUENCE_NAME_PROPERTY = "SequenceName";
     private final String sequenceName;
