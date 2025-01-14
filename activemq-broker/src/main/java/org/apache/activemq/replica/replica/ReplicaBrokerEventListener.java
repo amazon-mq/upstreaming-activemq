@@ -39,6 +39,7 @@ import org.apache.activemq.command.MessageDispatchNotification;
 import org.apache.activemq.command.MessageId;
 import org.apache.activemq.command.RemoveSubscriptionInfo;
 import org.apache.activemq.command.TransactionId;
+import org.apache.activemq.replica.storage.SequenceInfo;
 import org.apache.activemq.replica.util.DestinationExtractor;
 import org.apache.activemq.replica.util.DummyConnection;
 import org.apache.activemq.replica.util.ReplicaEventSerializer;
@@ -118,18 +119,13 @@ public class ReplicaBrokerEventListener implements MessageListener {
     }
 
     public void initialize() throws Exception {
-        String savedSequence = sequenceStorage.initialize(connectionContext);
+        SequenceInfo savedSequence = sequenceStorage.initialize(connectionContext);
         if (savedSequence == null) {
             return;
         }
 
-        String[] split = savedSequence.split("#");
-        if (split.length != 2) {
-            throw new IllegalStateException("Unknown sequence message format: " + savedSequence);
-        }
-        sequence = new BigInteger(split[0]);
-
-        sequenceMessageId = new MessageId(split[1]);
+        sequence = savedSequence.getSequence();
+        sequenceMessageId = savedSequence.getMessageId();
     }
 
     public void deinitialize() throws Exception {
@@ -205,7 +201,7 @@ public class ReplicaBrokerEventListener implements MessageListener {
                 }
 
                 if (commit) {
-                    sequenceStorage.enqueue(connectionContext, tid, sequence.toString() + "#" + sequenceMessageId);
+                    sequenceStorage.enqueue(connectionContext, tid, new SequenceInfo(sequence, sequenceMessageId));
 
                     broker.commitTransaction(connectionContext, tid, true);
 

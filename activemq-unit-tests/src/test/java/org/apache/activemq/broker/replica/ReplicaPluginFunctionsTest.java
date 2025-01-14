@@ -18,8 +18,10 @@
 package org.apache.activemq.broker.replica;
 
 import org.apache.activemq.broker.jmx.QueueViewMBean;
+import org.apache.activemq.command.ActiveMQObjectMessage;
 import org.apache.activemq.command.ActiveMQTextMessage;
 import org.apache.activemq.replica.ReplicaReplicationDestinationSupplier;
+import org.apache.activemq.replica.storage.SequenceInfo;
 import org.apache.activemq.replica.util.ReplicaSupport;
 import org.apache.commons.lang.RandomStringUtils;
 import org.junit.Test;
@@ -139,9 +141,9 @@ public class ReplicaPluginFunctionsTest extends ReplicaPluginTestSupport {
 
                 QueueViewMBean secondBrokerSequenceQueueView = getReplicationQueueView(secondBroker, ReplicaSupport.SEQUENCE_REPLICATION_QUEUE_NAME);
                 assertEquals(secondBrokerSequenceQueueView.browseMessages().size(), 1);
-                TextMessage sequenceQueueMessage = (TextMessage) secondBrokerSequenceQueueView.browseMessages().get(0);
-                String[] textMessageSequence = sequenceQueueMessage.getText().split("#");
-                assertTrue(Integer.parseInt(textMessageSequence[0]) >= 1);
+                ActiveMQObjectMessage sequenceQueueMessage = (ActiveMQObjectMessage) secondBrokerSequenceQueueView.browseMessages().get(0);
+                SequenceInfo sequenceInfo = (SequenceInfo) sequenceQueueMessage.getObject();
+                assertTrue(sequenceInfo.getSequence().intValue() >= 1);
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }

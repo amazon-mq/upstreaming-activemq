@@ -35,6 +35,8 @@ import org.apache.activemq.command.MessageId;
 import org.apache.activemq.replica.ReplicaPolicy;
 import org.apache.activemq.replica.ReplicaReplicationDestinationSupplier;
 import org.apache.activemq.replica.jmx.ReplicaStatistics;
+import org.apache.activemq.replica.storage.BatchSequenceInfo;
+import org.apache.activemq.replica.storage.SequenceInfo;
 import org.apache.activemq.replica.util.ReplicaEvent;
 import org.apache.activemq.replica.util.ReplicaEventSerializer;
 import org.apache.activemq.replica.util.ReplicaEventType;
@@ -48,6 +50,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -143,7 +146,7 @@ public class ReplicaSequencerTest {
         sequencer.sequence = null;
 
         MessageId messageId = new MessageId("1:0:0:1");
-        sequencer.restoreSequence(intermediateQueue, "1#" + messageId, Collections.emptyList());
+        sequencer.restoreSequence(intermediateQueue, new SequenceInfo(BigInteger.ONE, messageId), Collections.emptyList());
         verify(replicationMessageProducer, never()).enqueueMainReplicaEvent(any(), any(ReplicaEvent.class));
 
         assertThat(sequencer.sequence).isEqualTo(1);
@@ -175,7 +178,10 @@ public class ReplicaSequencerTest {
 
         when(intermediateSubscription.getDispatched()).thenReturn(new ArrayList<>(List.of(message1, message2, message3, message4)));
 
-        sequencer.restoreSequence(intermediateQueue, "4#" + messageId4, List.of("1#" + messageId1 + "#" + messageId2, "3#" + messageId3 + "#" + messageId4));
+        sequencer.restoreSequence(intermediateQueue, new SequenceInfo(BigInteger.valueOf(4), messageId4),
+                List.of(new BatchSequenceInfo(BigInteger.ONE, List.of(message1, message2)),
+                        new BatchSequenceInfo(BigInteger.valueOf(3), List.of(message3, message4)))
+        );
 
         assertThat(sequencer.sequence).isEqualTo(4);
 
