@@ -201,10 +201,6 @@ public class ReplicaSequencer {
     }
 
     void deinitialize() throws Exception {
-        if (!initialized.get()) {
-            return;
-        }
-
         logger.info("de-initializing replica sequencer");
 
         if (ackTaskRunner != null) {
