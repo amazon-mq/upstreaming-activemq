@@ -29,9 +29,7 @@ import java.util.stream.Stream;
 
 public class ReplicaSupport {
 
-    private ReplicaSupport() {
-        // Intentionally hidden
-    }
+    private ReplicaSupport() {}
 
     public static final int CURRENT_VERSION = 3;
     public static final int DEFAULT_VERSION = 1;
