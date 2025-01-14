@@ -50,6 +50,7 @@ import org.apache.activemq.replica.util.ReplicaRole;
 import org.apache.activemq.replica.jmx.ReplicaStatistics;
 import org.apache.activemq.replica.util.ReplicaSupport;
 import org.apache.activemq.replica.storage.ReplicaSequenceStorage;
+import org.apache.activemq.transaction.Synchronization;
 import org.apache.activemq.transaction.Transaction;
 import org.apache.activemq.usage.MemoryUsage;
 import org.slf4j.Logger;
@@ -695,7 +696,20 @@ public class ReplicaBrokerEventListener implements MessageListener {
             throw e;
         } finally {
             if (consumerInfo != null) {
-                broker.removeConsumer(context, consumerInfo);
+                ConsumerInfo finalConsumerInfo = consumerInfo;
+                ConnectionContext finalContext = context;
+                transactionBroker.getTransaction(connectionContext, transactionId, false).addSynchronization(new Synchronization() {
+
+                    @Override
+                    public void afterCommit() throws Exception {
+                        broker.removeConsumer(finalContext, finalConsumerInfo);
+                    }
+
+                    @Override
+                    public void afterRollback() throws Exception {
+                        broker.removeConsumer(finalContext, finalConsumerInfo);
+                    }
+                });
             }
         }
     }
