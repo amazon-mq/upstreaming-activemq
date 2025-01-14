@@ -18,7 +18,6 @@ package org.apache.activemq.replica.storage;
 
 import org.apache.activemq.broker.Broker;
 import org.apache.activemq.broker.ConnectionContext;
-import org.apache.activemq.command.ActiveMQTextMessage;
 import org.apache.activemq.command.MessageAck;
 import org.apache.activemq.command.MessageId;
 import org.apache.activemq.command.TransactionId;
@@ -28,14 +27,14 @@ import org.apache.activemq.replica.ReplicaReplicationDestinationSupplier;
 import java.util.ArrayList;
 import java.util.List;
 
-public class ReplicaRecoverySequenceStorage extends ReplicaBaseSequenceStorage {
+public class ReplicaRecoverySequenceStorage extends ReplicaBaseSequenceStorage<BatchSequenceInfo> {
 
     public ReplicaRecoverySequenceStorage(Broker broker, ReplicaReplicationDestinationSupplier destinationSupplier,
             ReplicaInternalMessageProducer replicaInternalMessageProducer, String sequenceName) {
         super(broker, destinationSupplier, replicaInternalMessageProducer, sequenceName);
     }
 
-    public List<String> initialize(ConnectionContext connectionContext) throws Exception {
+    public List<BatchSequenceInfo> initialize(ConnectionContext connectionContext) throws Exception {
         return super.initialize(connectionContext, false);
     }
 

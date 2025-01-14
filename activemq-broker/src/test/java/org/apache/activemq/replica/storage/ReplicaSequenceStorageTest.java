@@ -22,6 +22,7 @@ import org.apache.activemq.broker.region.IndirectMessageReference;
 import org.apache.activemq.broker.region.PrefetchSubscription;
 import org.apache.activemq.broker.region.Queue;
 import org.apache.activemq.broker.region.QueueMessageReference;
+import org.apache.activemq.command.ActiveMQObjectMessage;
 import org.apache.activemq.command.ActiveMQQueue;
 import org.apache.activemq.command.ActiveMQTextMessage;
 import org.apache.activemq.command.ConnectionId;
@@ -38,6 +39,7 @@ import org.junit.Test;
 import org.junit.runners.MethodSorters;
 import org.mockito.ArgumentCaptor;
 
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -83,27 +85,44 @@ public class ReplicaSequenceStorageTest {
     public void shouldInitializeWhenNoMessagesExist() throws Exception {
         when(subscription.getDispatched()).thenReturn(new ArrayList<>()).thenReturn(new ArrayList<>());
 
-        String initialize = replicaSequenceStorage.initialize(connectionContext);
+        SequenceInfo initialize = replicaSequenceStorage.initialize(connectionContext);
         assertThat(initialize).isNull();
         verify(sequenceQueue, never()).removeMessage(any());
     }
 
     @Test
+    public void shouldInitializeWhenOldFormatMessagesExists() throws Exception {
+        BigInteger sequence = BigInteger.ONE;
+        MessageId sequenceMessageId = new MessageId("1:1:1:1");
+
+        ActiveMQTextMessage message = new ActiveMQTextMessage();
+        message.setMessageId(new MessageId("1:0:0:1"));
+        message.setText(sequence + "#" + sequenceMessageId);
+        message.setStringProperty(ReplicaBaseSequenceStorage.SEQUENCE_NAME_PROPERTY, SEQUENCE_NAME);
+        when(subscription.getDispatched()).thenReturn(List.of(message));
+
+        SequenceInfo initialize = replicaSequenceStorage.initialize(connectionContext);
+        assertThat(initialize.getSequence()).isEqualTo(sequence);
+        assertThat(initialize.getMessageId()).isEqualTo(sequenceMessageId);
+        verify(sequenceQueue, never()).removeMessage(any());
+    }
+
+    @Test
     public void shouldInitializeWhenMoreThanOneExist() throws Exception {
-        ActiveMQTextMessage message1 = new ActiveMQTextMessage();
+        ActiveMQObjectMessage message1 = new ActiveMQObjectMessage();
         message1.setMessageId(new MessageId("1:0:0:1"));
-        message1.setText("1");
+        message1.setObject(new SequenceInfo(BigInteger.ONE, new MessageId("1:1:1:1")));
         message1.setStringProperty(ReplicaBaseSequenceStorage.SEQUENCE_NAME_PROPERTY, SEQUENCE_NAME);
-        ActiveMQTextMessage message2 = new ActiveMQTextMessage();
+        ActiveMQObjectMessage message2 = new ActiveMQObjectMessage();
         message2.setMessageId(new MessageId("1:0:0:2"));
-        message2.setText("2");
+        message1.setObject(new SequenceInfo(BigInteger.valueOf(2), new MessageId("1:1:1:2")));
         message2.setStringProperty(ReplicaBaseSequenceStorage.SEQUENCE_NAME_PROPERTY, SEQUENCE_NAME);
 
         when(subscription.getDispatched())
                 .thenReturn(List.of(new IndirectMessageReference(message1), new IndirectMessageReference(message2)));
 
-        String initialize = replicaSequenceStorage.initialize(connectionContext);
-        assertThat(initialize).isEqualTo(message2.getText());
+        SequenceInfo initialize = replicaSequenceStorage.initialize(connectionContext);
+        assertThat(initialize).isEqualTo(message2.getObject());
 
         ArgumentCaptor<MessageAck> ackArgumentCaptor = ArgumentCaptor.forClass(MessageAck.class);
         verify(broker).acknowledge(any(), ackArgumentCaptor.capture());
@@ -117,20 +136,20 @@ public class ReplicaSequenceStorageTest {
 
     @Test
     public void shouldEnqueueMessage() throws Exception {
-        String messageToEnqueue = "THIS IS A MESSAGE";
+        SequenceInfo messageToEnqueue = new SequenceInfo(BigInteger.ONE, new MessageId("1:1:1:1"));
         TransactionId transactionId = new LocalTransactionId(new ConnectionId("10101010"), 101010);
-        ArgumentCaptor<ActiveMQTextMessage> activeMQTextMessageArgumentCaptor = ArgumentCaptor.forClass(ActiveMQTextMessage.class);
+        ArgumentCaptor<ActiveMQObjectMessage> activeMQObjectMessageArgumentCaptor = ArgumentCaptor.forClass(ActiveMQObjectMessage.class);
         when(subscription.getDispatched()).thenReturn(new ArrayList<>());
         replicaSequenceStorage.initialize(connectionContext);
 
         replicaSequenceStorage.enqueue(connectionContext, transactionId, messageToEnqueue);
 
-        verify(replicaProducer, times(1)).sendForcingFlowControl(any(), activeMQTextMessageArgumentCaptor.capture());
-        assertThat(activeMQTextMessageArgumentCaptor.getValue().getText()).isEqualTo(messageToEnqueue);
-        assertThat(activeMQTextMessageArgumentCaptor.getValue().getTransactionId()).isEqualTo(transactionId);
-        assertThat(activeMQTextMessageArgumentCaptor.getValue().getDestination()).isEqualTo(sequenceQueueDestination);
-        assertThat(activeMQTextMessageArgumentCaptor.getValue().isPersistent()).isTrue();
-        assertThat(activeMQTextMessageArgumentCaptor.getValue().isResponseRequired()).isFalse();
+        verify(replicaProducer, times(1)).sendForcingFlowControl(any(), activeMQObjectMessageArgumentCaptor.capture());
+        assertThat(activeMQObjectMessageArgumentCaptor.getValue().getObject()).isEqualTo(messageToEnqueue);
+        assertThat(activeMQObjectMessageArgumentCaptor.getValue().getTransactionId()).isEqualTo(transactionId);
+        assertThat(activeMQObjectMessageArgumentCaptor.getValue().getDestination()).isEqualTo(sequenceQueueDestination);
+        assertThat(activeMQObjectMessageArgumentCaptor.getValue().isPersistent()).isTrue();
+        assertThat(activeMQObjectMessageArgumentCaptor.getValue().isResponseRequired()).isFalse();
         reset(broker);
         reset(subscription);
     }
@@ -158,7 +177,7 @@ public class ReplicaSequenceStorageTest {
 
         ArgumentCaptor<MessageAck> ackArgumentCaptor = ArgumentCaptor.forClass(MessageAck.class);
 
-        String messageToEnqueue = "THIS IS A MESSAGE";
+        SequenceInfo messageToEnqueue = new SequenceInfo(BigInteger.ONE, new MessageId("1:1:1:1"));
         TransactionId transactionId = new LocalTransactionId(new ConnectionId("10101010"), 101010);
 
         replicaSequenceStorage.enqueue(connectionContext, transactionId, messageToEnqueue);

@@ -37,6 +37,8 @@ import org.apache.activemq.command.MessageDispatch;
 import org.apache.activemq.command.MessageId;
 import org.apache.activemq.command.SessionId;
 import org.apache.activemq.command.TransactionId;
+import org.apache.activemq.replica.storage.BatchSequenceInfo;
+import org.apache.activemq.replica.storage.SequenceInfo;
 import org.apache.activemq.replica.util.DestinationExtractor;
 import org.apache.activemq.replica.util.DummyConnection;
 import org.apache.activemq.replica.util.ReplicaEvent;
@@ -59,10 +61,11 @@ import org.slf4j.LoggerFactory;
 
 import java.math.BigInteger;
 import java.util.ArrayList;
-import java.util.Collections;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
@@ -71,6 +74,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
+
+import static java.util.function.Predicate.not;
 
 public class ReplicaSequencer {
     private static final Logger logger = LoggerFactory.getLogger(ReplicaSequencer.class);
@@ -182,8 +187,8 @@ public class ReplicaSequencer {
                 replicaPolicy.getCompactorAdditionalMessagesLimit(), replicaStatistics);
 
         intermediateQueue.iterate();
-        String savedSequence = sequenceStorage.initialize(subscriptionConnectionContext);
-        List<String> savedSequencesToRestore = restoreSequenceStorage.initialize(subscriptionConnectionContext);
+        SequenceInfo savedSequence = sequenceStorage.initialize(subscriptionConnectionContext);
+        List<BatchSequenceInfo> savedSequencesToRestore = restoreSequenceStorage.initialize(subscriptionConnectionContext);
         restoreSequence(intermediateQueue, savedSequence, savedSequencesToRestore);
 
         scheduler = Executors.newSingleThreadScheduledExecutor();
@@ -237,63 +242,41 @@ public class ReplicaSequencer {
         initialized.set(false);
     }
 
-    // TODO: wrap sequence message and restore sequences message in their own classes
-    void restoreSequence(Queue intermediateQueue, String savedSequence, List<String> savedSequencesToRestore) throws Exception {
+    void restoreSequence(Queue intermediateQueue, SequenceInfo savedSequence, List<BatchSequenceInfo> savedSequencesToRestore) throws Exception {
         if (savedSequence != null) {
-            String[] split = savedSequence.split("#");
-            if (split.length != 2) {
-                throw new IllegalStateException("Unknown sequence message format: " + savedSequence);
-            }
-            sequence = new BigInteger(split[0]);
+            sequence = savedSequence.getSequence();
         }
         if (savedSequencesToRestore.isEmpty()) {
             return;
         }
         logger.info("restoring sequence");
 
-        String lastMessage = savedSequencesToRestore.get(savedSequencesToRestore.size() - 1);
-        String[] splitLast = lastMessage.split("#");
-        if (splitLast.length != 3) {
-            throw new IllegalStateException("Unknown sequence message format: " + lastMessage);
-        }
+        List<MessageId> messageIds = savedSequencesToRestore.stream().map(BatchSequenceInfo::getMessageIds).flatMap(Collection::stream).collect(Collectors.toList());
 
         // Finding all the messages in the intermediate queue up to the message id of the last message of the last
         // batch the restore sequences.
-        MessageId recoveryMessageId = new MessageId(splitLast[2]);
-        List<MessageReference> matchingMessages = new ArrayList<>();
-        boolean found = false;
-        for (MessageReference mr : subscription.getDispatched()) {
-            matchingMessages.add(mr);
-            if (mr.getMessageId().equals(recoveryMessageId)) {
-                found = true;
-                break;
-            }
-        }
+        List<MessageReference> matchingMessages = subscription.getDispatched().stream()
+                .filter(mr -> messageIds.contains(mr.getMessageId()))
+                .collect(Collectors.toList());
+        Set<MessageId> matchingMessageIds = matchingMessages.stream().map(MessageReference::getMessageId).collect(Collectors.toSet());
+        Set<MessageId> notFoundMessages = messageIds.stream().filter(not(matchingMessageIds::contains)).collect(Collectors.toSet());
 
         ConnectionContext connectionContext = createConnectionContext();
 
-        if (!found) {
+        if (!notFoundMessages.isEmpty()) {
             logger.info("trying to page in extra messages because restore sequences contain messages not yet to be found in intermediate queue.");
-            Set<String> matchingIds = matchingMessages.stream()
-                    .map(MessageReference::getMessageId)
-                    .map(MessageId::toString)
-                    .collect(Collectors.toSet());
 
-            List<QueueMessageReference> extraMessages = intermediateQueue.getMessagesUntilMatches(connectionContext,
-                    (context, mr) -> mr.getMessageId().equals(recoveryMessageId));
-            if (extraMessages == null) {
-                throw new IllegalStateException("Can't recover sequence. Message with id: " + recoveryMessageId + " not found");
+            List<QueueMessageReference> extraMessages = intermediateQueue.getMatchingMessages(connectionContext,
+                    (context, messageReference) -> notFoundMessages.contains(messageReference.getMessageId()),
+                    notFoundMessages.size());
+            if (extraMessages.size() != notFoundMessages.size()) {
+                Set<MessageId> extraMessageIds = extraMessages.stream().map(MessageReference::getMessageId).collect(Collectors.toSet());
+                Set<MessageId> missingMessages = notFoundMessages.stream().filter(not(extraMessageIds::contains)).collect(Collectors.toSet());
+                throw new IllegalStateException("Can't recover sequence. Messages with id: " + missingMessages + " not found");
             }
             logger.info("found extra messages, adding them to recovery");
-            List<MessageReference> toDispatch = new ArrayList<>();
-            for (MessageReference mr : extraMessages) {
-                if (matchingIds.contains(mr.getMessageId().toString())) {
-                    continue;
-                }
-                matchingMessages.add(mr);
-                toDispatch.add(mr);
-            }
-            intermediateQueue.dispatchNotification(subscription, toDispatch);
+            matchingMessages.addAll(extraMessages);
+            intermediateQueue.dispatchNotification(subscription, new ArrayList<MessageReference>(extraMessages));
         }
 
         TransactionId transactionId = new LocalTransactionId(
@@ -305,26 +288,16 @@ public class ReplicaSequencer {
         try {
             broker.beginTransaction(connectionContext, transactionId);
             rollbackOnFail = true;
-            for (String seq : savedSequencesToRestore) {
-                String[] split = seq.split("#");
-                if (split.length != 3) {
-                    throw new IllegalStateException("Unknown sequence message format: " + seq);
-                }
 
-                if (sequence != null && !sequence.equals(new BigInteger(split[0]))) {
+            Map<MessageId, MessageReference> id2Ref = matchingMessages.stream().collect(Collectors.toMap(MessageReference::getMessageId, v -> v));
+
+            for (BatchSequenceInfo sequenceInfo : savedSequencesToRestore) {
+                if (sequence != null && !sequence.equals(sequenceInfo.getSequence())) {
                     throw new IllegalStateException("Sequence recovery error. Incorrect sequence. Expected sequence: " +
-                            sequence + " saved sequence: " + seq);
+                            sequence + " saved sequence: " + sequenceInfo);
                 }
 
-                // revisit this logic, the logic up to this point assuming all messages in intermediate queue should have a corresponding entry in restoreSequence queue (if not empty).
-                // But what if the acknowledge flow doesn't rollback correctly such that messages have already been sent and removed from intermediate queue but restoreSequence still have it?
-                List<MessageReference> batch = getBatch(matchingMessages, new MessageId(split[1]), new MessageId(split[2]));
-                if (batch.isEmpty()) {
-                    throw new IllegalStateException(
-                            String.format("no batch found for messages between first message id %s and last message id %s in intermediate queue", split[1], split[2]));
-                }
-
-                sequence = enqueueReplicaEvent(connectionContext, batch, new BigInteger(split[0]), transactionId);
+                sequence = enqueueReplicaEvent(connectionContext, getBatch(id2Ref, sequenceInfo), sequenceInfo.getSequence(), transactionId);
             }
 
             broker.commitTransaction(connectionContext, transactionId, true);
@@ -346,23 +319,18 @@ public class ReplicaSequencer {
         }
     }
 
-    private List<MessageReference> getBatch(List<MessageReference> list, MessageId firstMessageId, MessageId lastMessageId) {
+    private List<MessageReference> getBatch(Map<MessageId, MessageReference> id2Ref, BatchSequenceInfo sequenceInfo) {
         List<MessageReference> result = new ArrayList<>();
-        boolean inAckRange = false;
-        for (MessageReference node : list) {
-            MessageId messageId = node.getMessageId();
-            if (firstMessageId.equals(messageId)) {
-                inAckRange = true;
+        for (MessageId messageId : sequenceInfo.getMessageIds()) {
+            MessageReference ref = id2Ref.get(messageId);
+            if (ref == null) {
+                throw new IllegalStateException("Message with id " + messageId + " was not found");
             }
-            if (inAckRange) {
-                result.add(node);
-                if (lastMessageId.equals(messageId)) {
-                    break;
-                }
-            }
+            result.add(ref);
         }
         return result;
     }
+
     @SuppressWarnings("unchecked")
     List<MessageReference> acknowledge(ConsumerBrokerExchange consumerExchange, MessageAck ack) throws Exception {
         List<MessageReference> messagesToAck = replicaAckHelper.getMessagesToAck(ack, mainQueue);
@@ -561,16 +529,12 @@ public class ReplicaSequencer {
 
     private void iterateSend0() {
         List<MessageReference> dispatched = subscription.getDispatched();
-        List<MessageReference> toProcess = new ArrayList<>();
+        List<MessageReference> toProcess;
 
         synchronized (deliveredMessages) {
-            for (int i = dispatched.size() - 1; i >= 0; i--) {
-                MessageId messageId = dispatched.get(i).getMessageId();
-                if (deliveredMessages.contains(messageId.toString())) {
-                    break;
-                }
-                toProcess.add(0, dispatched.get(i));
-            }
+            toProcess = dispatched.stream()
+                    .filter(v -> !deliveredMessages.contains(v.getMessageId().toString()))
+                    .collect(Collectors.toList());
         }
 
         if (toProcess.isEmpty() && hasConsumer) {
@@ -618,7 +582,7 @@ public class ReplicaSequencer {
                 restoreSequenceStorage.send(
                         connectionContext,
                         transactionId,
-                        newSequence + "#" + batch.get(0).getMessageId() + "#" + batch.get(batch.size() - 1).getMessageId(),
+                        new BatchSequenceInfo(newSequence, batch),
                         batch.get(0).getMessageId());
 
                 newSequence = newSequence1;
@@ -628,7 +592,7 @@ public class ReplicaSequencer {
             sequenceStorage.enqueue(
                     connectionContext,
                     transactionId,
-                    newSequence + "#" + toProcess.get(toProcess.size() - 1).getMessageId());
+                    new SequenceInfo(newSequence, toProcess.get(toProcess.size() - 1).getMessageId()));
 
             broker.commitTransaction(connectionContext, transactionId, true);
 
