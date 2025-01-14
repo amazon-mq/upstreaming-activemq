@@ -679,7 +679,6 @@ public class ReplicaBrokerEventListener implements MessageListener {
             if (messageAck.getTransactionId() == null || !messageAck.getTransactionId().isXATransaction()) {
                 messageAck.setTransactionId(transactionId);
             }
-            messageAck.setTransactionId(null);
 
             if (messageAck.isPoisonAck()) {
                 messageAck.setAckType(MessageAck.STANDARD_ACK_TYPE);
