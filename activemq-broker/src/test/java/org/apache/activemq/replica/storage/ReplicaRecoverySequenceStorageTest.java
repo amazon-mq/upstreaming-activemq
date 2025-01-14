@@ -21,6 +21,7 @@ import org.apache.activemq.broker.ConnectionContext;
 import org.apache.activemq.broker.region.IndirectMessageReference;
 import org.apache.activemq.broker.region.PrefetchSubscription;
 import org.apache.activemq.broker.region.Queue;
+import org.apache.activemq.command.ActiveMQObjectMessage;
 import org.apache.activemq.command.ActiveMQQueue;
 import org.apache.activemq.command.ActiveMQTextMessage;
 import org.apache.activemq.command.MessageId;
@@ -30,7 +31,9 @@ import org.apache.activemq.replica.util.ReplicaSupport;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.math.BigInteger;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 
@@ -70,26 +73,37 @@ public class ReplicaRecoverySequenceStorageTest {
     public void shouldInitializeWhenNoMessagesExist() throws Exception {
         when(subscription.getDispatched()).thenReturn(new ArrayList<>());
 
-        List<String> initialize = replicaSequenceStorage.initialize(connectionContext);
+        List<BatchSequenceInfo> initialize = replicaSequenceStorage.initialize(connectionContext);
         assertThat(initialize).isEmpty();
         verify(sequenceQueue, never()).removeMessage(any());
     }
 
+    @Test(expected = ReplicaStorageFormatException.class)
+    public void shouldThrowWhenOldFormatMessagesExists() throws Exception {
+        ActiveMQTextMessage message = new ActiveMQTextMessage();
+        message.setMessageId(new MessageId("1:0:0:1"));
+        message.setText("1#1:1:1:1#1:1:1:2");
+        message.setStringProperty(ReplicaBaseSequenceStorage.SEQUENCE_NAME_PROPERTY, SEQUENCE_NAME);
+        when(subscription.getDispatched()).thenReturn(List.of(message));
+
+        List<BatchSequenceInfo> initialize = replicaSequenceStorage.initialize(connectionContext);
+    }
+
     @Test
     public void shouldInitializeWhenMoreThanOneExist() throws Exception {
-        ActiveMQTextMessage message1 = new ActiveMQTextMessage();
+        ActiveMQObjectMessage message1 = new ActiveMQObjectMessage();
         message1.setMessageId(new MessageId("1:0:0:1"));
-        message1.setText("1");
+        message1.setObject(new BatchSequenceInfo(BigInteger.ONE, Collections.emptyList()));
         message1.setStringProperty(ReplicaBaseSequenceStorage.SEQUENCE_NAME_PROPERTY, SEQUENCE_NAME);
-        ActiveMQTextMessage message2 = new ActiveMQTextMessage();
+        ActiveMQObjectMessage message2 = new ActiveMQObjectMessage();
         message2.setMessageId(new MessageId("1:0:0:2"));
-        message2.setText("2");
+        message1.setObject(new BatchSequenceInfo(BigInteger.TWO, Collections.emptyList()));
         message2.setStringProperty(ReplicaBaseSequenceStorage.SEQUENCE_NAME_PROPERTY, SEQUENCE_NAME);
 
         when(subscription.getDispatched())
                 .thenReturn(List.of(new IndirectMessageReference(message1), new IndirectMessageReference(message2)));
 
-        List<String> initialize = replicaSequenceStorage.initialize(connectionContext);
-        assertThat(initialize).containsExactly(message1.getText(), message2.getText());
+        List<BatchSequenceInfo> initialize = replicaSequenceStorage.initialize(connectionContext);
+        assertThat(initialize).containsExactly((BatchSequenceInfo) message1.getObject(), (BatchSequenceInfo) message2.getObject());
     }
 }

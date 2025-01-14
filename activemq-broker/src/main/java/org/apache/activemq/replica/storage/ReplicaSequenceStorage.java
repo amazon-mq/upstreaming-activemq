@@ -19,25 +19,49 @@ package org.apache.activemq.replica.storage;
 import org.apache.activemq.broker.Broker;
 import org.apache.activemq.broker.ConnectionContext;
 import org.apache.activemq.command.ActiveMQTextMessage;
+import org.apache.activemq.command.Message;
+import org.apache.activemq.command.MessageId;
 import org.apache.activemq.replica.util.ReplicaInternalMessageProducer;
 import org.apache.activemq.replica.ReplicaReplicationDestinationSupplier;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.math.BigInteger;
 import java.util.List;
 
-public class ReplicaSequenceStorage extends ReplicaBaseSequenceStorage {
+public class ReplicaSequenceStorage extends ReplicaBaseSequenceStorage<SequenceInfo> {
+
+    private final Logger logger = LoggerFactory.getLogger(ReplicaBaseStorage.class);
 
     public ReplicaSequenceStorage(Broker broker, ReplicaReplicationDestinationSupplier destinationSupplier,
             ReplicaInternalMessageProducer replicaInternalMessageProducer, String sequenceName) {
         super(broker, destinationSupplier, replicaInternalMessageProducer, sequenceName);
     }
 
-    public String initialize(ConnectionContext connectionContext) throws Exception {
-        List<String> allMessages = super.initialize(connectionContext, true);
+    public SequenceInfo initialize(ConnectionContext connectionContext) throws Exception {
+        try {
+            List<SequenceInfo> allMessages = super.initialize(connectionContext, true);
 
-        if (allMessages.isEmpty()) {
-            return null;
+            if (allMessages.isEmpty()) {
+                return null;
+            }
+
+            return allMessages.get(0);
+        } catch (ReplicaStorageFormatException e) {
+            logger.warn("ReplicaSequenceStorage is in old format");
+
+            List<Message> allMessages = e.getOriginalMessages();
+
+            if (allMessages.isEmpty()) {
+                return null;
+            }
+
+            String message = ((ActiveMQTextMessage) allMessages.get(0)).getText();
+            String[] split = message.split("#");
+            if (split.length != 2) {
+                throw new IllegalStateException("Unknown sequence message format: " + message);
+            }
+            return new SequenceInfo(new BigInteger(split[0]), new MessageId(split[1]));
         }
-
-        return allMessages.get(0);
     }
 }
