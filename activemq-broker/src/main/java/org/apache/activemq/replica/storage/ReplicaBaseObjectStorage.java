@@ -17,45 +17,45 @@
 package org.apache.activemq.replica.storage;
 
 import org.apache.activemq.broker.Broker;
-import org.apache.activemq.broker.BrokerStoppedException;
 import org.apache.activemq.broker.ConnectionContext;
+import org.apache.activemq.command.ActiveMQObjectMessage;
 import org.apache.activemq.command.ActiveMQQueue;
-import org.apache.activemq.command.ActiveMQTextMessage;
 import org.apache.activemq.command.Message;
 import org.apache.activemq.command.MessageId;
 import org.apache.activemq.command.TransactionId;
 import org.apache.activemq.replica.util.ReplicaInternalMessageProducer;
 
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
 
-public abstract class ReplicaBaseTextStorage extends ReplicaBaseStorage<String> {
+public class ReplicaBaseObjectStorage<T extends Serializable> extends ReplicaBaseStorage<T> {
 
-    public ReplicaBaseTextStorage(Broker broker, ReplicaInternalMessageProducer replicaInternalMessageProducer,
+    public ReplicaBaseObjectStorage(Broker broker, ReplicaInternalMessageProducer replicaInternalMessageProducer,
             ActiveMQQueue destination, String idGeneratorPrefix, String selector) {
         super(broker, replicaInternalMessageProducer, destination, idGeneratorPrefix, selector);
     }
 
-    protected List<String> initialize(ConnectionContext connectionContext, boolean keepOnlyOneMessage) throws Exception {
-        List<String> result = new ArrayList<>();
+    @SuppressWarnings("unchecked")
+    public List<T> initialize(ConnectionContext connectionContext, boolean keepOnlyOneMessage) throws Exception {
+        List<T> result = new ArrayList<>();
         for (Message message : super.initializeBase(connectionContext, keepOnlyOneMessage)) {
-            result.add(((ActiveMQTextMessage) message).getText());
+            result.add((T) ((ActiveMQObjectMessage) message).getObject());
         }
         return result;
     }
 
     @Override
-    public void send(ConnectionContext connectionContext, TransactionId tid, String message, MessageId messageId) throws Exception {
-        ActiveMQTextMessage seqMessage = new ActiveMQTextMessage();
-        seqMessage.setText(message);
-        seqMessage.setTransactionId(tid);
-        seqMessage.setDestination(destination);
-        seqMessage.setMessageId(messageId);
-        seqMessage.setProducerId(replicationProducerId);
-        seqMessage.setPersistent(true);
-        seqMessage.setResponseRequired(false);
+    public void send(ConnectionContext connectionContext, TransactionId tid, T object, MessageId messageId) throws Exception {
+        ActiveMQObjectMessage message = new ActiveMQObjectMessage();
+        message.setObject(object);
+        message.setTransactionId(tid);
+        message.setDestination(destination);
+        message.setMessageId(messageId);
+        message.setProducerId(replicationProducerId);
+        message.setPersistent(true);
+        message.setResponseRequired(false);
 
-        send(connectionContext, seqMessage);
+        send(connectionContext, message);
     }
 }

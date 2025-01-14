@@ -117,6 +117,8 @@ public class ReplicaResynchronizer {
 
         broker.removeDestination(connectionContext, destinationSupplier.getResynchronizationQueue(), 1000);
         management.updateBrokerRole(connectionContext, null, ReplicaRole.source);
+
+        storage.deinitialize(connectionContext);
     }
 
     private void enqueueResyncDestinationsEvent(ConnectionContext connectionContext, ActiveMQDestination destinationType,
