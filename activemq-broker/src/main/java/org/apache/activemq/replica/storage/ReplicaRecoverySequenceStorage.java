@@ -36,11 +36,7 @@ public class ReplicaRecoverySequenceStorage extends ReplicaBaseSequenceStorage {
     }
 
     public List<String> initialize(ConnectionContext connectionContext) throws Exception {
-        List<String> result = new ArrayList<>();
-        for (ActiveMQTextMessage message : super.initialize(connectionContext, false)) {
-            result.add(message.getText());
-        }
-        return result;
+        return super.initialize(connectionContext, false);
     }
 
     public void acknowledge(ConnectionContext connectionContext, TransactionId tid, List<String> messageIds) throws Exception {

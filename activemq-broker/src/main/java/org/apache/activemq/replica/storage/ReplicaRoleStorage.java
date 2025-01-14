@@ -33,12 +33,12 @@ public class ReplicaRoleStorage extends ReplicaBaseTextStorage {
     }
 
     public ReplicaRole initialize(ConnectionContext connectionContext) throws Exception {
-        List<ActiveMQTextMessage> allMessages = super.initialize(connectionContext, true);
+        List<String> allMessages = super.initialize(connectionContext, true);
 
         if (allMessages.isEmpty()) {
             return null;
         }
 
-        return ReplicaRole.valueOf(allMessages.get(0).getText());
+        return ReplicaRole.valueOf(allMessages.get(0));
     }
 }
