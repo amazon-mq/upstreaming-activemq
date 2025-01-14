@@ -102,6 +102,9 @@ public class ReplicaSourceBroker extends MutativeRoleBroker {
             replicaSequencer.initialize();
         } catch (ReplicaStorageFormatException e) {
             logger.warn("ReplicaSequenceStorage is in old format. Initiating the resyncronization.");
+            replicaSequencer.deinitialize();
+            removeReplicationQueues();
+            initQueueProvider();
             replicaResynchronizer.resynchronize(role, true);
             replicaSequencer.initialize();
         }
