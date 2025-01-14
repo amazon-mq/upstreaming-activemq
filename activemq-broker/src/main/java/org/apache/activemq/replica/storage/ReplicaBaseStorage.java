@@ -17,6 +17,7 @@
 package org.apache.activemq.replica.storage;
 
 import org.apache.activemq.broker.Broker;
+import org.apache.activemq.broker.BrokerStoppedException;
 import org.apache.activemq.broker.ConnectionContext;
 import org.apache.activemq.broker.ConsumerBrokerExchange;
 import org.apache.activemq.broker.region.MessageReference;
@@ -49,7 +50,7 @@ import java.util.stream.Collectors;
 
 import static java.util.Objects.requireNonNull;
 
-public abstract class ReplicaBaseStorage {
+public abstract class ReplicaBaseStorage<T> {
 
     private final Logger logger = LoggerFactory.getLogger(ReplicaBaseStorage.class);
 
@@ -100,6 +101,17 @@ public abstract class ReplicaBaseStorage {
 
     }
 
+    public void deinitialize(ConnectionContext connectionContext) throws Exception {
+        queue = null;
+
+        if (subscription != null) {
+            try {
+                broker.removeConsumer(connectionContext, subscription.getConsumerInfo());
+            } catch (BrokerStoppedException ignored) {}
+            subscription = null;
+        }
+    }
+
     private List<Message> keepOnlyOneMessage(ConnectionContext connectionContext, List<Message> allMessages) throws Exception {
         if (allMessages.size() < 2) {
             return allMessages;
@@ -127,6 +139,17 @@ public abstract class ReplicaBaseStorage {
 
         return Collections.singletonList(allMessages.get(allMessages.size() - 1));
     }
+
+
+    public void enqueue(ConnectionContext connectionContext, TransactionId tid, T message) throws Exception {
+        // before enqueue message, we acknowledge all messages currently in queue.
+        acknowledgeAll(connectionContext, tid);
+
+        send(connectionContext, tid, message,
+                new MessageId(replicationProducerId, eventMessageIdGenerator.getNextSequenceId()));
+    }
+
+    public abstract void send(ConnectionContext connectionContext, TransactionId tid, T message, MessageId messageId) throws Exception;
 
     public void acknowledgeAll(ConnectionContext connectionContext, TransactionId tid) throws Exception {
         List<MessageReference> dispatched = subscription.getDispatched();

@@ -39,17 +39,6 @@ public abstract class ReplicaBaseSequenceStorage extends ReplicaBaseTextStorage 
         this.sequenceName = requireNonNull(sequenceName);
     }
 
-    public void deinitialize(ConnectionContext connectionContext) throws Exception {
-        queue = null;
-
-        if (subscription != null) {
-            try {
-                broker.removeConsumer(connectionContext, subscription.getConsumerInfo());
-            } catch (BrokerStoppedException ignored) {}
-            subscription = null;
-        }
-    }
-
     @Override
     public void send(ConnectionContext connectionContext, ActiveMQMessage seqMessage) throws Exception {
         seqMessage.setStringProperty(SEQUENCE_NAME_PROPERTY, sequenceName);
