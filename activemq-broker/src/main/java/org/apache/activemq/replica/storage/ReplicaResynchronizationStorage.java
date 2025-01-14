@@ -30,7 +30,7 @@ import org.apache.activemq.replica.util.ReplicaRole;
 
 import java.util.List;
 
-public class ReplicaResynchronizationStorage extends ReplicaBaseStorage {
+public class ReplicaResynchronizationStorage extends ReplicaBaseObjectStorage<ResyncInfo> {
 
     public ReplicaResynchronizationStorage(Broker broker, ReplicaReplicationDestinationSupplier destinationSupplier,
             ReplicaInternalMessageProducer replicaInternalMessageProducer) {
@@ -38,33 +38,12 @@ public class ReplicaResynchronizationStorage extends ReplicaBaseStorage {
     }
 
     public ResyncInfo initialize(ConnectionContext connectionContext) throws Exception {
-        List<Message> allMessages = super.initializeBase(connectionContext, true);
+        List<ResyncInfo> allMessages = super.initialize(connectionContext, true);
 
         if (allMessages.isEmpty()) {
             return null;
         }
 
-        return (ResyncInfo) ((ActiveMQObjectMessage) allMessages.get(0)).getObject();
-    }
-
-    public void enqueue(ConnectionContext connectionContext, TransactionId tid, ResyncInfo resyncInfo) throws Exception {
-        // before enqueue message, we acknowledge all messages currently in queue.
-        acknowledgeAll(connectionContext, tid);
-
-        send(connectionContext, tid, resyncInfo,
-                new MessageId(replicationProducerId, eventMessageIdGenerator.getNextSequenceId()));
-    }
-
-    public void send(ConnectionContext connectionContext, TransactionId tid, ResyncInfo resyncInfo, MessageId messageId) throws Exception {
-        ActiveMQObjectMessage message = new ActiveMQObjectMessage();
-        message.setObject(resyncInfo);
-        message.setTransactionId(tid);
-        message.setDestination(destination);
-        message.setMessageId(messageId);
-        message.setProducerId(replicationProducerId);
-        message.setPersistent(true);
-        message.setResponseRequired(false);
-
-        send(connectionContext, message);
+        return allMessages.get(0);
     }
 }
