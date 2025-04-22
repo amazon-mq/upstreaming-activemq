@@ -43,4 +43,12 @@ public class BatchSequenceInfo implements Serializable {
     public List<MessageId> getMessageIds() {
         return Arrays.stream(messageIds).map(MessageId::new).collect(Collectors.toList());
     }
+
+    @java.lang.Override
+    public java.lang.String toString() {
+        return "BatchSequenceInfo{" +
+                "sequence='" + sequence + '\'' +
+                ", messageIds=" + java.util.Arrays.toString(messageIds) +
+                '}';
+    }
 }
