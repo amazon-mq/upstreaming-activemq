@@ -56,6 +56,7 @@ import org.apache.activemq.thread.TaskRunnerFactory;
 import org.apache.activemq.usage.MemoryUsage;
 import org.apache.activemq.util.IdGenerator;
 import org.apache.activemq.util.LongSequenceGenerator;
+import org.apache.activemq.replica.storage.ReplicaSequenceRecoveryException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -268,7 +269,14 @@ public class ReplicaSequencer {
             if (extraMessages.size() != notFoundMessages.size()) {
                 Set<MessageId> extraMessageIds = extraMessages.stream().map(MessageReference::getMessageId).collect(Collectors.toSet());
                 Set<MessageId> missingMessages = notFoundMessages.stream().filter(not(extraMessageIds::contains)).collect(Collectors.toSet());
-                throw new IllegalStateException("Can't recover sequence. Messages with id: " + missingMessages + " not found");
+                logger.error("================================");
+                logger.error("Can't recover sequence and will resync.");
+                logger.error("savedSequencesToRestore: " + savedSequencesToRestore);
+                logger.error("matchingMessageIds: " + matchingMessageIds);
+                logger.error("extraMessageIds: " + extraMessageIds);
+                logger.error("missingMessages: " + missingMessages);
+                logger.error("================================");
+                throw new ReplicaSequenceRecoveryException("Can't recover sequence. Messages with id: " + missingMessages + " not found");
             }
             logger.info("found extra messages, adding them to recovery");
             matchingMessages.addAll(extraMessages);
