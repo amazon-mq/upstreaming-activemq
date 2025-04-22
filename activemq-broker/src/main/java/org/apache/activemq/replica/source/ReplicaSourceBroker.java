@@ -40,6 +40,7 @@ import org.apache.activemq.replica.ReplicaReplicationDestinationSupplier;
 import org.apache.activemq.replica.ReplicaRoleManagement;
 import org.apache.activemq.replica.source.resync.ReplicaResynchronizer;
 import org.apache.activemq.replica.storage.ReplicaStorageFormatException;
+import org.apache.activemq.replica.storage.ReplicaSequenceRecoveryException;
 import org.apache.activemq.replica.util.ReplicaEventType;
 import org.apache.activemq.replica.util.ReplicaRole;
 import org.apache.activemq.replica.util.ReplicaSupport;
@@ -100,8 +101,8 @@ public class ReplicaSourceBroker extends MutativeRoleBroker {
 
         try {
             replicaSequencer.initialize();
-        } catch (ReplicaStorageFormatException e) {
-            logger.warn("ReplicaSequenceStorage is in old format. Initiating the resyncronization.");
+        } catch (ReplicaStorageFormatException | ReplicaSequenceRecoveryException e) {
+            logger.warn("Initiating the resyncronization because: " + e.getMessage());
             replicaSequencer.deinitialize();
             removeReplicationQueues();
             initQueueProvider();
