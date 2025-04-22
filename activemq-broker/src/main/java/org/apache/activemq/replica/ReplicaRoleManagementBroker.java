@@ -19,6 +19,7 @@ package org.apache.activemq.replica;
 import org.apache.activemq.Service;
 import org.apache.activemq.broker.ConnectionContext;
 import org.apache.activemq.broker.MutableBrokerFilter;
+import org.apache.activemq.broker.TransportConnection;
 import org.apache.activemq.broker.TransportConnector;
 import org.apache.activemq.broker.region.CompositeDestinationInterceptor;
 import org.apache.activemq.broker.region.DestinationInterceptor;
@@ -176,9 +177,15 @@ public class ReplicaRoleManagementBroker extends MutableBrokerFilter implements 
         getBrokerService().stopAllConnectors(new ServiceStopper() {
             @Override
             public void stop(Service service) {
-                if (service instanceof TransportConnector &&
-                        ((TransportConnector) service).getName().equals(ReplicaSupport.REPLICATION_CONNECTOR_NAME)) {
-                    return;
+                if (service instanceof TransportConnector) {
+                    TransportConnector transportConnector = (TransportConnector) service;
+
+                    if (transportConnector.getName().equals(ReplicaSupport.REPLICATION_CONNECTOR_NAME)) {
+                        return;
+                    }
+                    for (TransportConnection connection : transportConnector.getConnections()) {
+                        connection.stopAsync();
+                    }
                 }
                 super.stop(service);
             }
