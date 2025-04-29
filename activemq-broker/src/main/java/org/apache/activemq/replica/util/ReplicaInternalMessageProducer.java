@@ -19,9 +19,14 @@ package org.apache.activemq.replica.util;
 import org.apache.activemq.broker.Broker;
 import org.apache.activemq.broker.ConnectionContext;
 import org.apache.activemq.broker.ProducerBrokerExchange;
+import org.apache.activemq.command.ActiveMQDestination;
 import org.apache.activemq.command.ActiveMQMessage;
 import org.apache.activemq.command.ProducerInfo;
+import org.apache.activemq.security.SecurityContext;
 import org.apache.activemq.state.ProducerState;
+
+import java.util.Optional;
+import java.util.concurrent.ConcurrentMap;
 
 import static java.util.Objects.requireNonNull;
 
@@ -40,11 +45,15 @@ public class ReplicaInternalMessageProducer {
         producerExchange.setProducerState(new ProducerState(new ProducerInfo()));
 
         boolean originalFlowControl = connectionContext.isProducerFlowControl();
+        Optional<ConcurrentMap<ActiveMQDestination, ActiveMQDestination>> authorizedWriteDests = Optional.ofNullable(connectionContext.getSecurityContext())
+                .map(SecurityContext::getAuthorizedWriteDests);
         try {
+            authorizedWriteDests.ifPresent(dests -> dests.put(eventMessage.getDestination(), eventMessage.getDestination()));
             connectionContext.setProducerFlowControl(true);
             broker.send(producerExchange, eventMessage);
         } finally {
             connectionContext.setProducerFlowControl(originalFlowControl);
+            authorizedWriteDests.ifPresent(dests -> dests.remove(eventMessage.getDestination()));
         }
     }
 }
