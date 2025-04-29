@@ -27,6 +27,8 @@ import java.util.stream.Collectors;
 
 public class BatchSequenceInfo implements Serializable {
 
+    private static final long serialVersionUID = -1284944712476852472L;
+
     private final String sequence;
 
     private final String[] messageIds;
