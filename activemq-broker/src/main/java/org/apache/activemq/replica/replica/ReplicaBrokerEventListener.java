@@ -658,7 +658,10 @@ public class ReplicaBrokerEventListener implements MessageListener {
                 context = connectionContext.copy();
                 context.setClientId(clientId);
                 context.setConnection(new DummyConnection());
-                broker.addConsumer(context, consumerInfo);
+                DurableTopicSubscription durableTopicSubscription = (DurableTopicSubscription) broker.addConsumer(context, consumerInfo);
+                //We don't want to keep it active to be able to connect to it on the other side when needed
+                //but we want to have keepDurableSubsActive to be able to acknowledge
+                durableTopicSubscription.deactivate(true, 0);
             }
 
             List<String> existingMessageIdsToAck = messageDispatch(ack, messageIdsToAck);
