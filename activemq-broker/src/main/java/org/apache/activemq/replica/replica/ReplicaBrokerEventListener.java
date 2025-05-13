@@ -29,6 +29,7 @@ import org.apache.activemq.broker.region.Queue;
 import org.apache.activemq.broker.region.RegionBroker;
 import org.apache.activemq.broker.region.Subscription;
 import org.apache.activemq.broker.region.TopicRegion;
+import org.apache.activemq.broker.region.AbstractRegion;
 import org.apache.activemq.command.ActiveMQDestination;
 import org.apache.activemq.command.ActiveMQMessage;
 import org.apache.activemq.command.ConnectionId;
@@ -636,34 +637,14 @@ public class ReplicaBrokerEventListener implements MessageListener {
                 TransactionId transactionId) throws Exception {
         ActiveMQDestination destination = ack.getDestination();
         MessageAck messageAck = new MessageAck();
-        ConsumerInfo consumerInfo = null;
-        ConnectionContext context = connectionContext;
+
         try {
             if (!isDestinationExisted(destination)) {
                 logger.warn("Skip MESSAGE_ACK processing event due to non-existing destination [{}]", destination.getPhysicalName());
                 return;
             }
-            if (destination.isQueue()) {
-                consumerInfo = new ConsumerInfo();
-                consumerInfo.setConsumerId(ack.getConsumerId());
-                consumerInfo.setPrefetchSize(0);
-                consumerInfo.setDestination(destination);
-                broker.addConsumer(context, consumerInfo);
-            } else if (destination.isTopic() && subscriptionName != null && clientId != null) {
-                consumerInfo = new ConsumerInfo();
-                consumerInfo.setConsumerId(ack.getConsumerId());
-                consumerInfo.setPrefetchSize(0);
-                consumerInfo.setDestination(destination);
-                consumerInfo.setSubscriptionName(subscriptionName);
-                context = connectionContext.copy();
-                context.setClientId(clientId);
-                context.setConnection(new DummyConnection());
-                DurableTopicSubscription durableTopicSubscription = (DurableTopicSubscription) broker.addConsumer(context, consumerInfo);
-                //We don't want to keep it active to be able to connect to it on the other side when needed
-                //but we want to have keepDurableSubsActive to be able to acknowledge
-                durableTopicSubscription.deactivate(true, 0);
-            }
 
+            createConsumerIfNeeded(ack, subscriptionName, clientId, transactionId, connectionContext);
             List<String> existingMessageIdsToAck = messageDispatch(ack, messageIdsToAck);
 
             if (existingMessageIdsToAck.isEmpty()) {
@@ -693,6 +674,42 @@ public class ReplicaBrokerEventListener implements MessageListener {
                     ack.getLastMessageId(),
                     ack.getConsumerId(), e);
             throw e;
+        }
+    }
+
+    private void createConsumerIfNeeded(MessageAck ack, String subscriptionName, String clientId, TransactionId transactionId, ConnectionContext connectionContext) throws Exception {
+        ActiveMQDestination destination = ack.getDestination();
+        ConsumerInfo consumerInfo = null;
+        ConnectionContext context = connectionContext;
+
+        try {
+            AbstractRegion region = (AbstractRegion) ((RegionBroker) broker.getAdaptor(RegionBroker.class)).getRegion(destination);
+            if (destination.isQueue()) {
+                if (region.getSubscriptions().get(ack.getConsumerId()) != null) {
+                    return;
+                }
+                consumerInfo = new ConsumerInfo();
+                consumerInfo.setConsumerId(ack.getConsumerId());
+                consumerInfo.setPrefetchSize(0);
+                consumerInfo.setDestination(destination);
+                broker.addConsumer(context, consumerInfo);
+            } else if (destination.isTopic() && subscriptionName != null && clientId != null) {
+                if (((TopicRegion) region).lookupSubscription(subscriptionName, clientId) != null) {
+                    return;
+                }
+                consumerInfo = new ConsumerInfo();
+                consumerInfo.setConsumerId(ack.getConsumerId());
+                consumerInfo.setPrefetchSize(0);
+                consumerInfo.setDestination(destination);
+                consumerInfo.setSubscriptionName(subscriptionName);
+                context = connectionContext.copy();
+                context.setClientId(clientId);
+                context.setConnection(new DummyConnection());
+                DurableTopicSubscription durableTopicSubscription = (DurableTopicSubscription) broker.addConsumer(context, consumerInfo);
+                // We don't want to keep it active to be able to connect to it on the other side when needed
+                // but we want to have keepDurableSubsActive to be able to acknowledge
+                durableTopicSubscription.deactivate(true, 0);
+            }
         } finally {
             if (consumerInfo != null) {
                 ConsumerInfo finalConsumerInfo = consumerInfo;
