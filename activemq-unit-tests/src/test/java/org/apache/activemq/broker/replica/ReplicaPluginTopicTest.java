@@ -433,6 +433,27 @@ public class ReplicaPluginTopicTest extends ReplicaPluginTestSupport {
         firstBrokerSession.close();
     }
 
+    public void testDuplicateDurableSubscribers() throws Exception {
+        Session firstBrokerSession = firstBrokerConnection.createSession(false, Session.CLIENT_ACKNOWLEDGE);
+        Session firstBrokerSession2 = firstBrokerConnection2.createSession(false, Session.CLIENT_ACKNOWLEDGE);
+        MessageProducer firstBrokerProducer = firstBrokerSession.createProducer(destination);
+        MessageConsumer firstBrokerConsumerOne = firstBrokerSession.createDurableSubscriber((Topic) destination, CLIENT_ID_ONE);
+        ActiveMQTextMessage message  = new ActiveMQTextMessage();
+        message.setText(getName() + "No. 1");
+        firstBrokerProducer.send(message);
+        Thread.sleep(LONG_TIMEOUT);
+
+        TopicViewMBean firstBrokerDestinationTopicView = getTopicView(firstBroker, destination.getPhysicalName());
+        assertEquals(firstBrokerDestinationTopicView.getConsumerCount(), 1);
+
+        MessageConsumer firstBrokerConsumerTwo = firstBrokerSession2.createDurableSubscriber((Topic) destination, CLIENT_ID_TWO);
+        message  = new ActiveMQTextMessage();
+        message.setText(getName() + "No. 2");
+        firstBrokerProducer.send(message);
+        Thread.sleep(LONG_TIMEOUT);
+        assertEquals(firstBrokerDestinationTopicView.getConsumerCount(), 2);
+    }
+
     public void testTemporaryTopicIsNotReplicated() throws Exception {
         Session firstBrokerSession = firstBrokerConnection.createSession(false, Session.CLIENT_ACKNOWLEDGE);
         MessageProducer firstBrokerProducer = firstBrokerSession.createProducer(destination);
