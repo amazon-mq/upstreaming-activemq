@@ -72,12 +72,14 @@ public class ReplicaSupport {
             REPLICATION_RESYNCHRONIZATION_QUEUE_NAME);
     public static final Set<String> REPLICATION_TOPIC_NAMES = Set.of(REPLICATION_ROLE_ADVISORY_TOPIC_NAME);
 
-    public static final Set<String> REPLICATION_DESTINATION_NAMES = Stream.concat(REPLICATION_QUEUE_NAMES.stream(),
-            REPLICATION_TOPIC_NAMES.stream()).collect(Collectors.toSet());
-
-
     public static boolean isReplicationDestination(ActiveMQDestination destination) {
-        return REPLICATION_DESTINATION_NAMES.contains(destination.getPhysicalName());
+        if (destination.isQueue()) {
+            return REPLICATION_QUEUE_NAMES.contains(destination.getPhysicalName());
+        }
+        if (destination.isTopic()) {
+            return REPLICATION_TOPIC_NAMES.contains(destination.getPhysicalName());
+        }
+        return false;
     }
 
     public static boolean isMainReplicationQueue(ActiveMQDestination destination) {
