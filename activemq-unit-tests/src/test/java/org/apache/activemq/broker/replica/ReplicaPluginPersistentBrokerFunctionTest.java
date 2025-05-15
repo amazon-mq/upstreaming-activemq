@@ -20,11 +20,13 @@ import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.ActiveMQXAConnectionFactory;
 import org.apache.activemq.broker.jmx.QueueViewMBean;
 import org.apache.activemq.command.ActiveMQTextMessage;
+import org.apache.activemq.replica.storage.SequenceInfo;
 import org.apache.activemq.replica.util.ReplicaSupport;
 import org.junit.Test;
 
 import javax.jms.Connection;
 import javax.jms.MessageProducer;
+import javax.jms.ObjectMessage;
 import javax.jms.Session;
 import javax.jms.TextMessage;
 import javax.jms.XAConnection;
@@ -121,9 +123,10 @@ public class ReplicaPluginPersistentBrokerFunctionTest extends ReplicaPluginTest
 
         QueueViewMBean secondBrokerSequenceQueueView = getReplicationQueueView(secondBroker, ReplicaSupport.SEQUENCE_REPLICATION_QUEUE_NAME);
         assertEquals(secondBrokerSequenceQueueView.browseMessages().size(), 1);
-        TextMessage sequenceQueueMessage = (TextMessage) secondBrokerSequenceQueueView.browseMessages().get(0);
-        String[] textMessageSequence = sequenceQueueMessage.getText().split("#");
-        assertTrue(Integer.parseInt(textMessageSequence[0]) >= messagesToSend);
+
+        ObjectMessage sequenceQueueMessage = (ObjectMessage) secondBrokerSequenceQueueView.browseMessages().get(0);
+        SequenceInfo sequenceInfo = (SequenceInfo) sequenceQueueMessage.getObject();
+        assertTrue(sequenceInfo.getSequence().intValue() >= messagesToSend);
         secondBrokerSession.close();
 
         restartSecondBroker(true);
@@ -132,9 +135,9 @@ public class ReplicaPluginPersistentBrokerFunctionTest extends ReplicaPluginTest
 
         secondBrokerSequenceQueueView = getReplicationQueueView(secondBroker, ReplicaSupport.SEQUENCE_REPLICATION_QUEUE_NAME);
         assertEquals(secondBrokerSequenceQueueView.browseMessages().size(), 1);
-        sequenceQueueMessage = (TextMessage) secondBrokerSequenceQueueView.browseMessages().get(0);
-        textMessageSequence = sequenceQueueMessage.getText().split("#");
-        assertTrue(Integer.parseInt(textMessageSequence[0]) >= messagesToSend);
+        sequenceQueueMessage = (ObjectMessage) secondBrokerSequenceQueueView.browseMessages().get(0);
+        sequenceInfo = (SequenceInfo) sequenceQueueMessage.getObject();
+        assertTrue(sequenceInfo.getSequence().intValue() >= messagesToSend);
         firstBrokerSession.close();
         secondBrokerSession.close();
     }
@@ -169,9 +172,9 @@ public class ReplicaPluginPersistentBrokerFunctionTest extends ReplicaPluginTest
 
         QueueViewMBean secondBrokerSequenceQueueView = getReplicationQueueView(secondBroker, ReplicaSupport.SEQUENCE_REPLICATION_QUEUE_NAME);
         assertEquals(secondBrokerSequenceQueueView.browseMessages().size(), 1);
-        TextMessage sequenceQueueMessage = (TextMessage) secondBrokerSequenceQueueView.browseMessages().get(0);
-        String[] textMessageSequence = sequenceQueueMessage.getText().split("#");
-        assertTrue(Integer.parseInt(textMessageSequence[0]) >= messagesToSend * 2);
+        ObjectMessage sequenceQueueMessage = (ObjectMessage) secondBrokerSequenceQueueView.browseMessages().get(0);
+        SequenceInfo sequenceInfo = (SequenceInfo) sequenceQueueMessage.getObject();
+        assertTrue(sequenceInfo.getSequence().intValue() >= messagesToSend * 2);
         firstBrokerSession.close();
         secondBrokerSession.close();
     }
