@@ -29,6 +29,7 @@ import org.apache.activemq.command.ActiveMQMessage;
 import org.apache.activemq.command.ActiveMQQueue;
 import org.apache.activemq.command.DestinationInfo;
 import org.apache.activemq.command.MessageId;
+import org.apache.activemq.replica.storage.SequenceInfo;
 import org.apache.activemq.replica.util.ReplicaEvent;
 import org.apache.activemq.replica.util.ReplicaEventSerializer;
 import org.apache.activemq.replica.util.ReplicaEventType;
@@ -46,6 +47,7 @@ import org.mockito.ArgumentCaptor;
 
 import javax.jms.Connection;
 import javax.jms.MessageProducer;
+import javax.jms.ObjectMessage;
 import javax.jms.Session;
 import javax.jms.TextMessage;
 
@@ -202,9 +204,9 @@ public class ReplicationEventHandlingTest extends ReplicaPluginTestSupport {
 
         QueueViewMBean secondBrokerSequenceQueueView = getReplicationQueueView(secondBroker, ReplicaSupport.SEQUENCE_REPLICATION_QUEUE_NAME);
         assertEquals(secondBrokerSequenceQueueView.browseMessages().size(), 1);
-        TextMessage sequenceQueueMessage = (TextMessage) secondBrokerSequenceQueueView.browseMessages().get(0);
-        String[] textMessageSequence = sequenceQueueMessage.getText().split("#");
-        assertEquals(Integer.parseInt(textMessageSequence[0]), 20);
+        ObjectMessage sequenceQueueMessage = (ObjectMessage) secondBrokerSequenceQueueView.browseMessages().get(0);
+        SequenceInfo sequenceInfo = (SequenceInfo) sequenceQueueMessage.getObject();
+        assertEquals(sequenceInfo.getSequence().intValue(), 20);
 
         MessageId messageId = new MessageId("1:1");
 
