@@ -24,7 +24,6 @@ import org.apache.activemq.broker.region.virtual.CompositeDestinationFilter;
 import org.apache.activemq.command.Message;
 import org.apache.activemq.command.TransactionId;
 import org.apache.activemq.replica.source.ReplicaEventReplicator;
-import org.apache.activemq.replica.source.ReplicaSourceBroker;
 import org.apache.activemq.replica.util.ReplicaRole;
 
 public class ReplicaDestinationFilter extends DestinationFilter {
