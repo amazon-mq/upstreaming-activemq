@@ -532,4 +532,171 @@ public class ReplicaPluginQueueTest extends ReplicaPluginTestSupport {
         firstBrokerSession.close();
     }
 
+    public void testAllVirtualTopicMessagesAreReplicated() throws Exception {
+        final String virtualTopicName = "VirtualTopic." + getDestinationString();
+        final String firstConsumerQueueName = "Consumer.One." + virtualTopicName;
+        final String secondConsumerQueueName = "Consumer.Two." + virtualTopicName;
+
+        final Session firstBrokerSession = firstBrokerConnection.createSession(false, Session.CLIENT_ACKNOWLEDGE);
+        final Topic virtualTopic = new ActiveMQTopic(virtualTopicName);
+
+        final MessageProducer firstBrokerProducer = firstBrokerSession.createProducer(virtualTopic);
+        firstBrokerProducer.setDeliveryMode(javax.jms.DeliveryMode.PERSISTENT);
+
+        firstBrokerSession.createConsumer(new ActiveMQQueue(firstConsumerQueueName));
+        firstBrokerSession.createConsumer(new ActiveMQQueue(secondConsumerQueueName));
+
+        final int messageCount = 100;
+
+        for (int i = 0; i < messageCount; i++) {
+            ActiveMQTextMessage msg = new ActiveMQTextMessage();
+            msg.setText(getName());
+            firstBrokerProducer.send(msg);
+        }
+
+        waitUntilQueueExists(secondBroker, firstConsumerQueueName);
+        waitUntilQueueExists(secondBroker, secondConsumerQueueName);
+        waitUntilQueueHasMessages(secondBroker, firstConsumerQueueName, messageCount);
+        waitUntilQueueHasMessages(secondBroker, secondConsumerQueueName, messageCount);
+
+        firstBrokerSession.close();
+    }
+
+    public void testVirtualTopicFanOutAcksAreReplicated() throws Exception {
+        // Ref.: https://t.corp.amazon.com/V2193145703
+
+        final String virtualTopicName = "VirtualTopic." + getDestinationString();
+        final String firstConsumerQueueName = "Consumer.One." + virtualTopicName;
+        final String secondConsumerQueueName = "Consumer.Two." + virtualTopicName;
+
+        final int messagesToPublish = 13;
+        final int messagesToAcknowledge = 10;
+        final int expectedRemainingMessages = messagesToPublish - messagesToAcknowledge;
+
+        final Session firstBrokerSession = firstBrokerConnection.createSession(false, Session.CLIENT_ACKNOWLEDGE);
+        final Topic virtualTopic = new ActiveMQTopic(virtualTopicName);
+
+        final MessageProducer firstBrokerProducer = firstBrokerSession.createProducer(virtualTopic);
+        firstBrokerProducer.setDeliveryMode(javax.jms.DeliveryMode.PERSISTENT);
+
+        final MessageConsumer firstConsumer = firstBrokerSession.createConsumer(new ActiveMQQueue(firstConsumerQueueName));
+        final MessageConsumer secondConsumer = firstBrokerSession.createConsumer(new ActiveMQQueue(secondConsumerQueueName));
+
+        // Publish to the virtual topic
+        for (int i = 0; i < messagesToPublish; i++) {
+            ActiveMQTextMessage msg = new ActiveMQTextMessage();
+            msg.setText(getName());
+            firstBrokerProducer.send(msg);
+        }
+
+        // Consume messages from the Consumer Queues
+        for (int i = 0; i < messagesToAcknowledge; i++) {
+            final Message firstMsg = firstConsumer.receive(SHORT_TIMEOUT);
+            assertNotNull(firstMsg);
+            firstMsg.acknowledge();
+
+            final Message secondMsg = secondConsumer.receive(SHORT_TIMEOUT);
+            assertNotNull(secondMsg);
+            secondMsg.acknowledge();
+        }
+
+        // Consumer queues must have been consumed in the primary broker
+        waitUntilQueueHasMessages(firstBroker, firstConsumerQueueName, expectedRemainingMessages);
+        waitUntilQueueHasMessages(firstBroker, secondConsumerQueueName, expectedRemainingMessages);
+
+        // Consumer queues must have been replicated to the replica broker
+        waitUntilQueueExists(secondBroker, firstConsumerQueueName);
+        waitUntilQueueExists(secondBroker, secondConsumerQueueName);
+
+        // Primary broker replication backlog is empty (no more messages pending replication)
+        waitUntilReplicationQueueIsEmpty(firstBroker);
+
+        // The consumer queues state in the replica broker must match the one in the primary broker
+        waitUntilQueueHasMessages(secondBroker, firstConsumerQueueName, expectedRemainingMessages);
+        waitUntilQueueHasMessages(secondBroker, secondConsumerQueueName, expectedRemainingMessages);
+
+        firstBrokerSession.close();
+    }
+
+    public void test() throws Exception {
+        // Ref.: https://t.corp.amazon.com/V2193145703
+
+        final String topicName = "MyDurableTopics." + getDestinationString();
+
+        // Must be the same on Primary and Replica brokers
+        final String firstConsumerName = "MyFirstConsumer";
+        final String secondConsumerName = "MySecondConsumer";
+        final String clientId = "MyClientId";
+
+        final int messagesToPublish = 13;
+        final int messagesToAcknowledge = 10;
+        final int expectedRemainingMessages = messagesToPublish * 2 - messagesToAcknowledge;
+
+        firstBrokerConnection.close();
+        firstBrokerConnection = firstBrokerConnectionFactory.createConnection();
+        firstBrokerConnection.setClientID(clientId);
+        firstBrokerConnection.start();
+        final Session firstBrokerSession = firstBrokerConnection.createSession(false, Session.CLIENT_ACKNOWLEDGE);
+        final Topic virtualTopic = new ActiveMQTopic(topicName);
+
+        final MessageProducer firstBrokerProducer = firstBrokerSession.createProducer(virtualTopic);
+        firstBrokerProducer.setDeliveryMode(javax.jms.DeliveryMode.PERSISTENT);
+
+        final MessageConsumer firstConsumer = firstBrokerSession.createDurableConsumer(new ActiveMQTopic(topicName), firstConsumerName);
+        final MessageConsumer secondConsumer = firstBrokerSession.createDurableConsumer(new ActiveMQTopic(topicName), secondConsumerName);
+
+        // Publish to the virtual topic
+        for (int i = 0; i < messagesToPublish; i++) {
+            ActiveMQTextMessage msg = new ActiveMQTextMessage();
+            msg.setText(getName());
+            firstBrokerProducer.send(msg);
+        }
+
+        // Consume some messages
+        for (int i = 0; i < messagesToAcknowledge; i++) {
+            firstConsumer.receive();
+            secondConsumer.receive();
+        }
+
+        // Publish another batch of messages
+        for (int i = 0; i < messagesToPublish; i++) {
+            ActiveMQTextMessage msg = new ActiveMQTextMessage();
+            msg.setText(getName());
+            firstBrokerProducer.send(msg);
+        }
+
+        // Close first consumer, leave second consumer connected
+        firstConsumer.close();
+
+        // Consumer queues must have been replicated to the replica broker
+        waitUntilTopicExists(secondBroker, topicName);
+
+        // Primary broker replication backlog is empty (no more messages pending replication)
+        waitUntilReplicationQueueIsEmpty(firstBroker);
+
+        secondBrokerConnection.close();
+        secondBrokerConnection = secondBrokerConnectionFactory.createConnection();
+        secondBrokerConnection.setClientID(clientId);
+        secondBrokerConnection.start();
+        final Session secondBrokerSession = secondBrokerConnection.createSession(false, Session.CLIENT_ACKNOWLEDGE);
+
+        final MessageConsumer replicaFirstConsumer = secondBrokerSession.createDurableConsumer(new ActiveMQTopic(topicName), firstConsumerName);
+        final MessageConsumer replicaSecondConsumer = secondBrokerSession.createDurableConsumer(new ActiveMQTopic(topicName), secondConsumerName);
+
+        waitForCondition("Pending messages to first durable consumer must have been replicated", () -> {
+            for (int i = 0; i < expectedRemainingMessages; i++) {
+                replicaFirstConsumer.receive();
+            }
+            return true;
+        });
+
+        waitForCondition("Pending messages to second durable consumer must have been replicated", () -> {
+            for (int i = 0; i < expectedRemainingMessages; i++) {
+                replicaSecondConsumer.receive();
+            }
+            return true;
+        });
+
+        firstBrokerSession.close();
+    }
 }

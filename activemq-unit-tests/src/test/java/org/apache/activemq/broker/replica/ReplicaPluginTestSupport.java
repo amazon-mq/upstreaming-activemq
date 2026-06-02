@@ -33,6 +33,8 @@ import org.apache.activemq.replica.util.ReplicaSupport;
 import org.apache.activemq.replica.jmx.ReplicationViewMBean;
 import org.apache.activemq.util.Wait;
 import org.apache.commons.io.FileUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.jms.ConnectionFactory;
 import javax.management.MBeanServer;
@@ -44,6 +46,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.File;
 import java.io.IOException;
+import java.util.stream.Stream;
 
 public abstract class ReplicaPluginTestSupport extends AutoFailTestSupport {
 
@@ -52,6 +55,8 @@ public abstract class ReplicaPluginTestSupport extends AutoFailTestSupport {
 
     protected static final String FIRST_KAHADB_DIRECTORY = "target/activemq-data/first/";
     protected static final String SECOND_KAHADB_DIRECTORY = "target/activemq-data/second/";
+
+    protected static final Logger LOG = LoggerFactory.getLogger(ReplicaPluginTestSupport.class);
 
     protected String firstBindAddress = "vm://firstBroker";
     protected String firstReplicaBindAddress = "tcp://localhost:61610";
@@ -258,29 +263,64 @@ public abstract class ReplicaPluginTestSupport extends AutoFailTestSupport {
         }
     }
 
-    protected void waitForCondition(Runnable condition) throws Exception {
-        assertTrue(Wait.waitFor(() -> {
+    protected void waitForCondition(final String message, final long duration, final Wait.Condition condition) throws Exception {
+        assertTrue(message, Wait.waitFor(() -> {
             try {
-                condition.run();
-                return true;
+                return condition.isSatisified();
             } catch (Exception|Error e) {
                 e.printStackTrace();
                 return false;
             }
-        }, Wait.MAX_WAIT_MILLIS * 5));
+        }, duration));
+    }
+
+    protected void waitForCondition(final String message, final Wait.Condition condition) throws Exception {
+        waitForCondition(message, Wait.MAX_WAIT_MILLIS*2, condition);
+    }
+
+    protected void waitForCondition(Runnable condition) throws Exception {
+        waitForCondition("", Wait.MAX_WAIT_MILLIS * 5, () -> {
+            condition.run();
+            return true;
+        });
     }
 
     protected void waitUntilReplicationQueueHasConsumer(BrokerService broker) throws Exception {
-        assertTrue("Replication Main Queue has Consumer",
-                Wait.waitFor(() -> {
-                    try {
-                        QueueViewMBean brokerMainQueueView = getReplicationQueueView(broker, ReplicaSupport.MAIN_REPLICATION_QUEUE_NAME);
-                        return brokerMainQueueView.getConsumerCount() > 0;
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                        return false;
-                    }
-                }, Wait.MAX_WAIT_MILLIS*2));
+        waitForCondition("Replication Main Queue has Consumer", () -> {
+            QueueViewMBean brokerMainQueueView = getReplicationQueueView(broker, ReplicaSupport.MAIN_REPLICATION_QUEUE_NAME);
+            return brokerMainQueueView.getConsumerCount() > 0;
+        });
     }
 
+    protected void waitUntilReplicationQueueIsEmpty(final BrokerService broker) throws Exception {
+        waitForCondition("Replication Main Queue is empty", () -> {
+            final long queueSize = getReplicationQueueView(broker, ReplicaSupport.MAIN_REPLICATION_QUEUE_NAME).getQueueSize();
+            LOG.info("Replication Queue has {} messages (expected 0)", queueSize);
+            return queueSize == 0;
+        });
+    }
+
+    protected void waitUntilQueueExists(final BrokerService broker, final String name) throws Exception {
+        waitForCondition(String.format("Queue %s exists", name), () -> {
+            final BrokerViewMBean brokerViewMBean = getBrokerView(broker);
+            return Stream.of(brokerViewMBean.getQueues())
+                    .anyMatch(queue -> queue.toString().contains(name));
+        });
+    }
+
+    protected void waitUntilQueueHasMessages(final BrokerService broker, final String name, final long expectedNumberOfMessages) throws Exception {
+        waitForCondition(String.format("Queue %s has %d messages", name, expectedNumberOfMessages), () -> {
+            final long queueSize = getQueueView(broker, name).getQueueSize();
+            LOG.info("Queue {} ({}) has {} messages (expected {})", name, broker.getBrokerName(), queueSize, expectedNumberOfMessages);
+            return queueSize == expectedNumberOfMessages;
+        });
+    }
+
+    protected void waitUntilTopicExists(final BrokerService broker, final String name) throws Exception {
+        waitForCondition(String.format("Topic %s exists", name), () -> {
+            final BrokerViewMBean brokerViewMBean = getBrokerView(broker);
+            return Stream.of(brokerViewMBean.getTopics())
+                    .anyMatch(topic -> topic.toString().contains(name));
+        });
+    }
 }
