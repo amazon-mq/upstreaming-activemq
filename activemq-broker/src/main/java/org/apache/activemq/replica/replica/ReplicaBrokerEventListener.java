@@ -69,6 +69,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -76,6 +77,9 @@ import java.util.stream.Collectors;
 import static java.util.Objects.requireNonNull;
 
 public class ReplicaBrokerEventListener implements MessageListener {
+
+    private static final int MAX_DISPATCH_RETRY_ATTEMPTS = 3;
+    private static final long DISPATCH_RETRY_SLEEP_MS = 10;
 
     private static final String REPLICATION_CONSUMER_CLIENT_ID = "DUMMY_REPLICATION_CONSUMER";
     private static final String SEQUENCE_NAME = "replicaSeq";
@@ -473,18 +477,31 @@ public class ReplicaBrokerEventListener implements MessageListener {
     private List<String> messageDispatch(MessageAck ack, List<String> messageIdsToAck) throws Exception {
         List<String> existingMessageIdsToAck = new ArrayList<>();
         for (String messageId : messageIdsToAck) {
-            try {
-                broker.processDispatchNotification(getMessageDispatchNotification(ack, messageId));
+            if (tryMessageDispatchWithRetries(ack, messageId)) {
                 existingMessageIdsToAck.add(messageId);
+            }
+        }
+        return existingMessageIdsToAck;
+    }
+
+    private boolean tryMessageDispatchWithRetries(final MessageAck ack, final String messageIdToAck) throws Exception {
+        for (int i=0; i<MAX_DISPATCH_RETRY_ATTEMPTS; i++) {
+            try {
+                broker.processDispatchNotification(getMessageDispatchNotification(ack, messageIdToAck));
+                return true;
             } catch (JMSException e) {
                 if (e.getMessage().contains("Slave broker out of sync with master")) {
-                    logger.warn("Skip MESSAGE_ACK processing event due to non-existing message [{}]", messageId);
+                    logger.debug(e.getMessage());
+                    logger.warn("Failed to dispatch MESSAGE_ACK processing event due to non-existing message [{}] during attempt {}. Will retry.", messageIdToAck, i);
+                    TimeUnit.MILLISECONDS.sleep(DISPATCH_RETRY_SLEEP_MS);
                 } else {
                     throw e;
                 }
             }
         }
-        return existingMessageIdsToAck;
+
+        logger.warn("Skip MESSAGE_ACK processing event due to non-existing message [{}].", messageIdToAck);
+        return false;
     }
 
     private static MessageDispatchNotification getMessageDispatchNotification(MessageAck ack, String messageId) {
