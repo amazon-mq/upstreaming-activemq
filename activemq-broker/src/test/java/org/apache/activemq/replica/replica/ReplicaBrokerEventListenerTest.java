@@ -693,6 +693,43 @@ public class ReplicaBrokerEventListenerTest {
     }
 
     @Test
+    public void canHandleEventOfType_MESSAGE_ACK_retryWhenMessageNotFound() throws Exception {
+        listener.sequence = null;
+        MessageId messageId = new MessageId("1:1");
+        when(broker.getDestinations()).thenReturn(new ActiveMQDestination[]{testQueue});
+        when(transactionBroker.getTransaction(any(), any(), anyBoolean())).thenReturn(mock(Transaction.class));
+
+        MessageAck ack = new MessageAck();
+        ConsumerId consumerId = new ConsumerId("2:2:2:2");
+        ack.setConsumerId(consumerId);
+        ack.setDestination(testQueue);
+
+        final JMSException transientException = new JMSException("Slave broker out of sync with master - Message: transient error");
+
+        doThrow(transientException)
+                .doThrow(transientException)
+                .doNothing()
+                .when(broker).processDispatchNotification(any(MessageDispatchNotification.class));
+
+        ActiveMQMessage replicaEventMessage = spy(new ActiveMQMessage());
+        ReplicaEvent event = new ReplicaEvent()
+                .setEventType(ReplicaEventType.MESSAGE_ACK)
+                .setEventData(eventSerializer.serializeReplicationData(ack))
+                .setReplicationProperty(ReplicaSupport.MESSAGE_IDS_PROPERTY, Collections.singletonList(messageId.toString()));
+        replicaEventMessage.setMessageId(new MessageId("1:1:1:1"));
+        replicaEventMessage.setContent(event.getEventData());
+        replicaEventMessage.setStringProperty(ReplicaEventType.EVENT_TYPE_PROPERTY, event.getEventType().name());
+        replicaEventMessage.setStringProperty(ReplicaSupport.SEQUENCE_PROPERTY, "0");
+        replicaEventMessage.setIntProperty(ReplicaSupport.VERSION_PROPERTY, ReplicaSupport.CURRENT_VERSION);
+        replicaEventMessage.setProperties(event.getReplicationProperties());
+
+        listener.onMessage(replicaEventMessage);
+
+        verify(broker, times(3)).processDispatchNotification(any(MessageDispatchNotification.class));
+        verify(broker).acknowledge(any(), any());
+    }
+
+    @Test
     public void canHandleEventOfType_MESSAGE_ACK_whenDestinationNotExist() throws Exception {
         listener.sequence = null;
         MessageId messageId = new MessageId("1:1");
