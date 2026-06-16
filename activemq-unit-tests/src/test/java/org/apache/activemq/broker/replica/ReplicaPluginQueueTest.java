@@ -376,6 +376,10 @@ public class ReplicaPluginQueueTest extends ReplicaPluginTestSupport {
         Queue queueOne = new ActiveMQQueue("Consumer.One." + virtualTopic.getTopicName());
         Queue queueTwo = new ActiveMQQueue("Consumer.Two." + virtualTopic.getTopicName());
 
+        // Messages to consumer queues are only replicated if there are consumers in the source broker
+        firstBrokerSession.createConsumer(queueOne);
+        firstBrokerSession.createConsumer(queueTwo);
+
         Session secondBrokerSession = secondBrokerConnection.createSession(false, Session.CLIENT_ACKNOWLEDGE);
         MessageConsumer secondBrokerConsumerOne = secondBrokerSession.createConsumer(queueOne);
         MessageConsumer secondBrokerConsumerTwo = secondBrokerSession.createConsumer(queueTwo);
@@ -618,7 +622,7 @@ public class ReplicaPluginQueueTest extends ReplicaPluginTestSupport {
         firstBrokerSession.close();
     }
 
-    public void test() throws Exception {
+    public void testDurableTopicConsumersAreReplicated() throws Exception {
         // Ref.: https://t.corp.amazon.com/V2193145703
 
         final String topicName = "MyDurableTopics." + getDestinationString();
@@ -632,20 +636,20 @@ public class ReplicaPluginQueueTest extends ReplicaPluginTestSupport {
         final int messagesToAcknowledge = 10;
         final int expectedRemainingMessages = messagesToPublish * 2 - messagesToAcknowledge;
 
-        firstBrokerConnection.close();
+        firstBrokerConnection.close(); // Close the connection so we can open again with the test's own client id
         firstBrokerConnection = firstBrokerConnectionFactory.createConnection();
         firstBrokerConnection.setClientID(clientId);
         firstBrokerConnection.start();
         final Session firstBrokerSession = firstBrokerConnection.createSession(false, Session.CLIENT_ACKNOWLEDGE);
-        final Topic virtualTopic = new ActiveMQTopic(topicName);
+        final Topic topic = new ActiveMQTopic(topicName);
 
-        final MessageProducer firstBrokerProducer = firstBrokerSession.createProducer(virtualTopic);
+        final MessageProducer firstBrokerProducer = firstBrokerSession.createProducer(topic);
         firstBrokerProducer.setDeliveryMode(javax.jms.DeliveryMode.PERSISTENT);
 
         final MessageConsumer firstConsumer = firstBrokerSession.createDurableConsumer(new ActiveMQTopic(topicName), firstConsumerName);
         final MessageConsumer secondConsumer = firstBrokerSession.createDurableConsumer(new ActiveMQTopic(topicName), secondConsumerName);
 
-        // Publish to the virtual topic
+        // Publish to the topic
         for (int i = 0; i < messagesToPublish; i++) {
             ActiveMQTextMessage msg = new ActiveMQTextMessage();
             msg.setText(getName());
@@ -674,7 +678,7 @@ public class ReplicaPluginQueueTest extends ReplicaPluginTestSupport {
         // Primary broker replication backlog is empty (no more messages pending replication)
         waitUntilReplicationQueueIsEmpty(firstBroker);
 
-        secondBrokerConnection.close();
+        secondBrokerConnection.close(); // Will reopen the connection with the same client id used in the source broker
         secondBrokerConnection = secondBrokerConnectionFactory.createConnection();
         secondBrokerConnection.setClientID(clientId);
         secondBrokerConnection.start();
