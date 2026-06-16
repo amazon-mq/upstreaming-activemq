@@ -20,7 +20,7 @@ import org.apache.activemq.broker.ConnectionContext;
 import org.apache.activemq.broker.ProducerBrokerExchange;
 import org.apache.activemq.broker.region.Destination;
 import org.apache.activemq.broker.region.virtual.CompositeDestinationFilter;
-import org.apache.activemq.broker.region.virtual.MappedQueueFilter;
+import org.apache.activemq.broker.region.virtual.VirtualTopicInterceptor;
 import org.apache.activemq.command.ActiveMQDestination;
 import org.apache.activemq.command.LocalTransactionId;
 import org.apache.activemq.command.Message;
@@ -171,22 +171,18 @@ public class ReplicaDestinationFilterTest {
     }
 
     @Test
-    public void givenIsSourceWhenIsVirtualTopicFanoutThenDoNotReplicate() throws Exception {
-        setIsSource();
+    public void givenIsReplicaWhenIsVirtualTopicThenDoNotSkipVirtualTopicInterceptor() throws Exception {
+        setIsReplica();
 
-        when(activeMQDestination.isQueue()).thenReturn(true); // Message is sent to queue
+        VirtualTopicInterceptor virtualTopicInterceptor = mock(VirtualTopicInterceptor.class);
+        Destination innerDestination = mock(Destination.class);
+        when(virtualTopicInterceptor.getNext()).thenReturn(innerDestination);
 
-        final ActiveMQDestination originalDestination = mock(ActiveMQDestination.class);
-        when(originalDestination.isTopic()).thenReturn(true); // Original destination is a topic, this is a message to a virtual topic consumer queue.
-
-        message.setOriginalDestination(originalDestination);
-
-        final MappedQueueFilter virtualTopicDestination = new MappedQueueFilter(activeMQDestination, destination);
-
-        ReplicaDestinationFilter filter = new ReplicaDestinationFilter(virtualTopicDestination, replicaEventReplicator, roleManagementBroker);
+        ReplicaDestinationFilter filter = new ReplicaDestinationFilter(virtualTopicInterceptor, replicaEventReplicator, roleManagementBroker);
         filter.send(producerExchange, message);
 
-        verify(replicaEventReplicator, never()).replicateSend(any(), any(), any());
+        verify(innerDestination).send(producerExchange, message);
+        verify(virtualTopicInterceptor, never()).send(producerExchange, message);
     }
 
     private void setIsSource() {

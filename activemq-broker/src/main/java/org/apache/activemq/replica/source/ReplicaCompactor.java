@@ -283,6 +283,10 @@ public class ReplicaCompactor {
                 if (ack.messageIdsToAck.size() == sendIds.size() && new HashSet<>(ack.messageIdsToAck).containsAll(sendIds)) {
                     result.addAll(sends);
                     result.add(ack);
+                    logger.trace("Compacted SEND+ACK on destination [{}]: ACK messageId={}, matched SENDs={}",
+                            sendsAndAcks.destination,
+                            ack.messageReference.getMessageId(),
+                            sendIds);
                 }
             }
         }
