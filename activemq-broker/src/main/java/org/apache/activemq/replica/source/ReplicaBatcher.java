@@ -21,8 +21,6 @@ import org.apache.activemq.command.ActiveMQMessage;
 import org.apache.activemq.replica.util.ReplicaEventType;
 import org.apache.activemq.replica.ReplicaPolicy;
 import org.apache.activemq.replica.util.ReplicaSupport;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -34,7 +32,6 @@ import java.util.Set;
 public class ReplicaBatcher {
 
     private final ReplicaPolicy replicaPolicy;
-    private static final Logger logger = LoggerFactory.getLogger(ReplicaBatcher.class);
 
     public ReplicaBatcher(ReplicaPolicy replicaPolicy) {
         this.replicaPolicy = replicaPolicy;
@@ -45,19 +42,6 @@ public class ReplicaBatcher {
         List<List<MessageReference>> result = new ArrayList<>();
 
         final Map<String, Set<String>> destination2eventType = new HashMap<>();
-
-        // Tracks SEND messages within the current batch targeting topic destinations, so we can use it to avoid putting
-        // these SENDs and their corresponding ACKs in the same batch. This is important for Virtual Topics:
-        //
-        // Once the SEND message reaches the Replica broker it will fan out to their corresponding consumer queues. If an
-        // ACK is replicated in the same batch it will result in the Replica trying to replay the ACK in the same transaction
-        // as the fanned out messages. Because the transaction is still open, the messages won't be visible and the ACK will fail.
-        // It results in messages never being ACKed in the replica broker.
-        //
-        // This is only a problem for Virtual Topics fanned out messages because their "SEND" is not replicated, instead we let the
-        // Replica broker fan out them again. Therefore, the compactor will not match SENDs and ACKs.
-        final Set<String> batchedMessageIdsSentToTopics = new HashSet<>();
-
         List<MessageReference> batch = new ArrayList<>();
 
         int batchSize = 0;
@@ -75,35 +59,21 @@ public class ReplicaBatcher {
                 batch.add(reference);
                 result.add(batch);
                 batch = new ArrayList<>();
-                batchedMessageIdsSentToTopics.clear();
                 continue;
             }
 
             boolean eventTypeSwitch = false;
-            boolean shouldTrackTopicSend = false; // See batchedMessageIdsSentToTopics
             if (originalDestination != null) {
                 final Set<String> sends = destination2eventType.computeIfAbsent(originalDestination, k -> new HashSet<>());
 
                 if (currentEventType == ReplicaEventType.MESSAGE_SEND) {
                     sends.add(message.getStringProperty(ReplicaSupport.MESSAGE_ID_PROPERTY));
-
-                    final boolean originalMessageWasSentToTopic = !message.getBooleanProperty(ReplicaSupport.IS_ORIGINAL_MESSAGE_SENT_TO_QUEUE_PROPERTY);
-                    final boolean messageWasInXATransaction = message.getBooleanProperty(ReplicaSupport.IS_ORIGINAL_MESSAGE_IN_XA_TRANSACTION_PROPERTY);
-                    if (originalMessageWasSentToTopic && !messageWasInXATransaction) {
-                        logger.trace("Message {} was sent to a Topic Destination: {}", message, originalDestination);
-                        shouldTrackTopicSend = true;
-                    }
                 }
                 if (currentEventType == ReplicaEventType.MESSAGE_ACK) {
                     final List<String> messageIds = (List<String>) message.getProperty(ReplicaSupport.MESSAGE_IDS_PROPERTY);
                     if (sends.stream().anyMatch(messageIds::contains)) {
                         destination2eventType.put(originalDestination, new HashSet<>());
                         eventTypeSwitch = true;
-                    }  else {
-                        eventTypeSwitch = batchedMessageIdsSentToTopics.stream() // Prevents topic SEND-ACK pairs from being batched together.
-                                .filter(messageIds::contains)
-                                .peek(messageId -> logger.trace("Message {} was ACK to a previous topic SEND: {}", messageId, originalDestination))
-                                .findAny().isPresent();
                     }
                 }
             }
@@ -114,13 +84,6 @@ public class ReplicaBatcher {
                 result.add(batch);
                 batch = new ArrayList<>();
                 batchSize = 0;
-                batchedMessageIdsSentToTopics.clear();
-                logger.trace("Building a new batch");
-            }
-
-            if (shouldTrackTopicSend) {
-                // Must be done after checking if the batch as exceeded the size limit. Otherwise, this message ID may not be tracked.
-                batchedMessageIdsSentToTopics.add(message.getStringProperty(ReplicaSupport.MESSAGE_ID_PROPERTY));
             }
 
             batch.add(reference);

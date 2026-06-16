@@ -21,8 +21,7 @@ import org.apache.activemq.broker.ProducerBrokerExchange;
 import org.apache.activemq.broker.region.Destination;
 import org.apache.activemq.broker.region.DestinationFilter;
 import org.apache.activemq.broker.region.virtual.CompositeDestinationFilter;
-import org.apache.activemq.broker.region.virtual.MappedQueueFilter;
-import org.apache.activemq.command.ActiveMQDestination;
+import org.apache.activemq.broker.region.virtual.VirtualTopicInterceptor;
 import org.apache.activemq.command.Message;
 import org.apache.activemq.command.TransactionId;
 import org.apache.activemq.replica.source.ReplicaEventReplicator;
@@ -32,7 +31,7 @@ import org.slf4j.LoggerFactory;
 
 public class ReplicaDestinationFilter extends DestinationFilter {
     private final boolean nextIsComposite;
-    private final boolean nextIsMappedQueue;
+    private final boolean nextIsVirtualTopic;
 
     private final ReplicaEventReplicator replicaEventReplicator;
     private final ReplicaRoleManagementBroker roleManagementBroker;
@@ -42,7 +41,8 @@ public class ReplicaDestinationFilter extends DestinationFilter {
     public ReplicaDestinationFilter(Destination next, ReplicaEventReplicator replicaEventReplicator, ReplicaRoleManagementBroker roleManagementBroker) {
         super(next);
         this.nextIsComposite = this.next != null && this.next instanceof CompositeDestinationFilter;
-        this.nextIsMappedQueue = this.next != null && this.next instanceof MappedQueueFilter; // Used by Virtual Topics
+        this.nextIsVirtualTopic = this.next != null && this.next instanceof VirtualTopicInterceptor;
+
         this.replicaEventReplicator = replicaEventReplicator;
         this.roleManagementBroker = roleManagementBroker;
     }
@@ -52,15 +52,6 @@ public class ReplicaDestinationFilter extends DestinationFilter {
         if(ReplicaRole.source == roleManagementBroker.getRole()) {
             super.send(producerExchange, messageSend);
             if(!nextIsComposite) {
-                // Don't replicate messages to Virtual Topics Consumer Queues. Instead, let the Replica Broker fan out
-                // again when the topic message is replicated, so we prevent message duplication.
-                if (isVirtualTopicFanOut(messageSend)) {
-                    logger.trace("Destination of message '{}' is a virtual topic ('{}') fan-out: '{}'. Not replicating it.",
-                            messageSend.getMessageId(),
-                            messageSend.getOriginalDestination().getQualifiedName(),
-                            messageSend.getDestination());
-                    return;
-                }
                 // don't replicate composite destination
                 replicateSend(producerExchange, messageSend);
             }
@@ -68,6 +59,10 @@ public class ReplicaDestinationFilter extends DestinationFilter {
             if(nextIsComposite) {
                 // we jump over CompositeDestinationFilter as we don't want to fan out composite destinations on the replica side
                 ((CompositeDestinationFilter) getNext()).getNext().send(producerExchange, messageSend);
+            } else if (nextIsVirtualTopic) {
+                // Do not fanout Virtual Topic messages to consumer queues. Instead, let the source broker replicate those messages.
+                // Ensures consistency on how messages are fanned out on source and replica side.
+                ((VirtualTopicInterceptor) getNext()).getNext().send(producerExchange, messageSend);
             } else {
                 super.send(producerExchange, messageSend);
             }
@@ -80,20 +75,6 @@ public class ReplicaDestinationFilter extends DestinationFilter {
             return super.canGC();
         }
         return false;
-    }
-
-    private boolean isVirtualTopicFanOut(Message message) {
-        final ActiveMQDestination destination = message.getDestination();
-        if (destination == null) {
-            return false;
-        }
-
-        final ActiveMQDestination originalDest = message.getOriginalDestination();
-        if (originalDest == null) {
-            return false;
-        }
-
-        return nextIsMappedQueue && destination.isQueue() && originalDest.isTopic();
     }
 
     private void replicateSend(ProducerBrokerExchange producerExchange, Message messageSend) throws Exception {
