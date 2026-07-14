@@ -87,6 +87,8 @@ public class ReplicaPlugin extends BrokerPluginSupport {
         for (String queue : ReplicaSupport.REPLICATION_QUEUE_NAMES) {
             PolicyEntry newPolicy = getPolicyEntry(new ActiveMQQueue(queue));
             newPolicy.setMaxPageSize(ReplicaSupport.INTERMEDIATE_QUEUE_PREFETCH_SIZE);
+            newPolicy.setMaxAuditDepth(65536);
+            newPolicy.setMaxProducersToAudit(2);
             policyEntries.add(newPolicy);
         }
         for (String topic : ReplicaSupport.REPLICATION_TOPIC_NAMES) {
